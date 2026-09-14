@@ -1,6 +1,7 @@
 import AppKit
 import BridgeCore
 import Foundation
+import WebKit
 
 @MainActor
 func runHandoff(caller: AllowedBrowser) -> Never {
@@ -28,23 +29,29 @@ func runHandoff(caller: AllowedBrowser) -> Never {
   }
 
   let prompt = ApprovalPrompt(plan: plan, request: request, caller: caller)
-  // Void, because the only thing this build can honestly make at the webview seam is
-  // nothing. Issue #25 makes it a `WKWebView`; until then the seam exists so that the
-  // ordering rule has something to be tested against.
-  let handoff = Handoff<Void>(prompt: prompt, makeWebView: {})
-  runApproval(handoff: handoff, channel: channel)
+  // The one place in the Bridge that constructs a `WKWebView`, and it is a closure
+  // `Handoff.approve()` alone can reach. That is what makes ADR 0002's ordering a
+  // property of the code rather than of this file's statement order.
+  let handoff = Handoff(prompt: prompt, makeWebView: HandoffWebView.makeWebView)
+  runHandoffWindow(handoff: handoff, request: request, plan: plan, channel: channel)
 }
 
 @MainActor
-func runApproval(handoff: Handoff<Void>, channel: ProtocolChannel) -> Never {
+func runHandoffWindow(
+  handoff: Handoff<WKWebView>,
+  request: SignInRequest,
+  plan: HandoffPlan,
+  channel: ProtocolChannel
+) -> Never {
   let application = NSApplication.shared
-  let delegate = ApprovalAppDelegate(handoff: handoff, channel: channel)
+  let delegate = HandoffAppDelegate(
+    handoff: handoff, request: request, plan: plan, channel: channel)
   application.setActivationPolicy(.regular)
   application.delegate = delegate
   application.run()
-  // The delegate answers and exits from whichever button the user pressed, so reaching
+  // The delegate answers and exits from whichever way the Handoff ended, so reaching
   // here means the run loop ended with nothing said.
-  send(.error(.internalFailure, detail: "approval window closed without an answer"), over: channel)
+  send(.error(.internalFailure, detail: "the window closed without an answer"), over: channel)
 }
 
 func send(_ response: BridgeResponse, over channel: ProtocolChannel) -> Never {

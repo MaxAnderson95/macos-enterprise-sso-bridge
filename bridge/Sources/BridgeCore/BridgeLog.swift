@@ -18,4 +18,8 @@ public enum BridgeLog {
   /// Planning a Handoff: which adapter claimed the request, and what it could say
   /// about where the Callback lands.
   public static let handoff = Logger(subsystem: subsystem, category: "handoff")
+
+  /// What the `WKWebView` did: which navigations were allowed to proceed, and the one
+  /// that was recognized as the Callback and stopped.
+  public static let navigation = Logger(subsystem: subsystem, category: "navigation")
 }

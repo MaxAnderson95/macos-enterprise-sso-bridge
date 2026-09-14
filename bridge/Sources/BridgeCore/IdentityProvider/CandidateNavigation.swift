@@ -34,13 +34,32 @@ public struct CandidateNavigation: Equatable, Sendable {
 /// A navigation this refuses is allowed to proceed. The Bridge captures Callbacks; it
 /// is not a security proxy for the provider's redirect chain.
 public enum CallbackEligibility {
+  /// Why a navigation is not a candidate. Named rather than boolean because the two
+  /// refusals differ in what they are worth saying: still being at the provider is
+  /// every navigation of a normal sign-in, while an unencrypted or credentialed target
+  /// is unusual enough that the navigation delegate logs its host.
+  public enum Refusal: String, Sendable {
+    case notEncrypted = "not https"
+    case embeddedCredentials = "embedded credentials"
+    case stillAtTheProvider = "still at the identity provider"
+  }
+
+  public static func refusal(
+    _ candidate: CandidateNavigation,
+    identityProviderHost: String
+  ) -> Refusal? {
+    guard candidate.url.scheme?.lowercased() == "https" else { return .notEncrypted }
+    guard candidate.url.user() == nil, candidate.url.password() == nil else {
+      return .embeddedCredentials
+    }
+    guard let host = candidate.url.host()?.lowercased() else { return .notEncrypted }
+    return host == identityProviderHost.lowercased() ? .stillAtTheProvider : nil
+  }
+
   public static func permits(
     _ candidate: CandidateNavigation,
     identityProviderHost: String
   ) -> Bool {
-    guard candidate.url.scheme?.lowercased() == "https" else { return false }
-    guard candidate.url.user() == nil, candidate.url.password() == nil else { return false }
-    guard let host = candidate.url.host()?.lowercased() else { return false }
-    return host != identityProviderHost.lowercased()
+    refusal(candidate, identityProviderHost: identityProviderHost) == nil
   }
 }

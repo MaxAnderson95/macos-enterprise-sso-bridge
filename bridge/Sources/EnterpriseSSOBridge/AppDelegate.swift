@@ -4,7 +4,7 @@ import BridgeCore
 /// The window state for a user launch: the Bridge was double-clicked, or opened from the
 /// Dock or launchd, so there is no Sign-in request and nothing to approve. It says what
 /// the app is for and offers a way out. The Approval panel is a different window and
-/// lives in `ApprovalWindowController`.
+/// lives in `HandoffWindowController`.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private static let readme = URL(

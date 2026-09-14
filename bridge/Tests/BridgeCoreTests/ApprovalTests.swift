@@ -3,9 +3,9 @@ import Testing
 
 @testable import BridgeCore
 
-/// A stand-in for the `WKWebView` issue #25 will create, which exists only to be
-/// counted. The count lives on the factory rather than on the `Handoff`, so the test
-/// asks the question the rule is written in: was a webview *made*, and when?
+/// A stand-in for the `WKWebView` the executable's factory creates, which exists only
+/// to be counted. The count lives on the factory rather than on the `Handoff`, so the
+/// test asks the question the rule is written in: was a webview *made*, and when?
 private final class WebViewSpy {
   private(set) var creations = 0
 

@@ -239,4 +239,85 @@ struct CallbackEligibilityTests {
   func refused(_ url: String) {
     #expect(!permits(url))
   }
+
+  /// The refusals the navigation delegate logs differently: an unencrypted or
+  /// credentialed target is unusual and gets a notice line naming its host, while
+  /// being still at the provider is most of a normal sign-in.
+  @Test("Each refusal says which one it is")
+  func refusalReason() {
+    func refusal(_ url: String) -> CallbackEligibility.Refusal? {
+      CallbackEligibility.refusal(
+        CandidateNavigation(url: URL(string: url)!, method: .get),
+        identityProviderHost: Self.providerHost
+      )
+    }
+    #expect(refusal("http://other.example.com/acs") == .notEncrypted)
+    #expect(refusal("https://user:secret@app.example.com/c") == .embeddedCredentials)
+    #expect(refusal("https://login.microsoftonline.com/common/reprocess") == .stillAtTheProvider)
+    #expect(refusal("https://app.example.com/signin-oidc") == nil)
+  }
+}
+
+/// The two halves put together, which is what the navigation delegate actually asks:
+/// the core's checks, then the adapter's rules, then a Callback in the shape the
+/// protocol sends.
+@Suite("What the Bridge does with one navigation")
+struct CallbackCaptureTests {
+  private static let plan = CallbackRecognitionTests.plan
+
+  private func verdict(
+    _ url: String, method: HTTPMethod = .get, fields: [(String, String)] = []
+  ) -> CallbackCapture.Verdict {
+    CallbackCapture.verdict(
+      for: CandidateNavigation(
+        url: URL(string: url)!,
+        method: method,
+        fields: fields.map(FormField.init(name:value:))
+      ),
+      plan: Self.plan,
+      identityProviderHost: "login.microsoftonline.com"
+    )
+  }
+
+  @Test("A recognized GET is the Callback, and its navigation is over")
+  func recognizedGET() {
+    #expect(
+      verdict("https://app.example.com/signin-oidc?code=0.Ac8")
+        == .capture(.get(url: URL(string: "https://app.example.com/signin-oidc?code=0.Ac8")!))
+    )
+  }
+
+  @Test("A recognized POST carries its fields in order")
+  func recognizedPOST() {
+    let fields = [("SAMLResponse", "PHNhbWxw"), ("RelayState", "opaque")]
+    #expect(
+      verdict("https://other.example.com/sso/acs", method: .post, fields: fields)
+        == .capture(
+          .post(
+            url: URL(string: "https://other.example.com/sso/acs")!,
+            fields: fields.map(FormField.init(name:value:))
+          )
+        )
+    )
+  }
+
+  /// The whole point of the core's checks being first: the adapter would call both of
+  /// these a Callback, and neither is one. Both are allowed to proceed, because the
+  /// Bridge captures Callbacks and does not police the provider's redirect chain.
+  @Test(
+    "A navigation the core refuses is never captured, whatever the adapter would say",
+    arguments: [
+      "http://other.example.com/acs?SAMLResponse=PHNhbWxw",
+      "https://user:secret@app.example.com/signin-oidc",
+      "https://login.microsoftonline.com/common/login",
+    ]
+  )
+  func refusedIsNeverCaptured(_ url: String) {
+    #expect(verdict(url) == .proceed)
+  }
+
+  @Test("An ordinary navigation the adapter does not recognize proceeds")
+  func unrecognized() {
+    #expect(verdict("https://app.example.com/other") == .proceed)
+  }
 }

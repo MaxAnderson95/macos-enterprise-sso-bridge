@@ -1,3 +1,4 @@
+import { isDeliverableCallbackUrl } from "./callbackUrl";
 import { entryOriginMatchPatterns } from "./generated/entryOrigins";
 import { requestHandoff } from "./nativeMessaging";
 import type { HandoffOutcome } from "./nativeMessaging";
@@ -29,8 +30,33 @@ chrome.webRequest.onBeforeRequest.addListener(
   ["requestBody"],
 );
 
-function isTerminalSuccess(outcome: HandoffOutcome): boolean {
-  return outcome.outcome === "response" && outcome.response.result === "callback";
+/**
+ * Drives the original tab to the Callback, and reports whether the Handoff got there.
+ * Only a delivered Callback spends the capture: everything else leaves it in place so
+ * the same Sign-in request can be replayed without going back through the
+ * Application's login page.
+ */
+async function deliverCallback(tabId: number, outcome: HandoffOutcome): Promise<HandoffEnd> {
+  if (outcome.outcome !== "response" || outcome.response.result !== "callback") {
+    return "failure";
+  }
+  const callback = outcome.response;
+  if (!isDeliverableCallbackUrl(callback.url)) {
+    console.log("Enterprise SSO Bridge: the returned callback URL was rejected");
+    return "failure";
+  }
+  if (callback.method === "POST") {
+    // A POST Callback is submitted from the Relay page, which is issue #26.
+    console.log("Enterprise SSO Bridge: a POST callback cannot be delivered yet");
+    return "failure";
+  }
+  try {
+    await chrome.tabs.update(tabId, { url: callback.url });
+  } catch (error) {
+    console.log("Enterprise SSO Bridge: could not navigate the tab", error);
+    return "failure";
+  }
+  return "success";
 }
 
 async function startHandoff(tabId: number, tabUrl: string | undefined) {
@@ -53,11 +79,11 @@ async function startHandoff(tabId: number, tabUrl: string | undefined) {
       return;
     }
     const outcome = await requestHandoff(request);
-    end = isTerminalSuccess(outcome) ? "success" : "failure";
-    // The badge, the title, the popup copy, and driving the tab to the Callback all
-    // arrive with the states in docs/spec/extension.md. Until then the console is the
-    // observable.
+    // The badge, the title, and the popup copy arrive with the states in
+    // docs/spec/extension.md, which is issue #27. Until then the console is the only
+    // observable for anything that is not a delivered Callback.
     console.log("Enterprise SSO Bridge:", outcome);
+    end = await deliverCallback(tabId, outcome);
   } finally {
     await session.finishHandoff(tabId, end);
   }

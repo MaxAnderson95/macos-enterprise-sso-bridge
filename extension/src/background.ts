@@ -110,19 +110,19 @@ async function runHandoff(tabId: number, start: Start) {
       // Nothing to replay: the capture aged out, or Gecko missed the Sign-in request
       // issued before its listener was primed. Both send the user back to the
       // Application's login page, which is what this copy says.
-      await state.show(tabId, "cannotStart");
+      await state.settle(tabId, "cannotStart");
       return;
     }
     const outcome = await requestHandoff(request);
     const verdict = handoffVerdict(outcome);
     if ("state" in verdict) {
       logOutcome(outcome, verdict.state);
-      await state.show(tabId, verdict.state);
+      await state.settle(tabId, verdict.state);
       return;
     }
     const failure = await deliverCallback(tabId, verdict.deliver);
     if (failure !== null) {
-      await state.show(tabId, failure);
+      await state.settle(tabId, failure);
       return;
     }
     end = "success";

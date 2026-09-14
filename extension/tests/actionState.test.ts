@@ -235,8 +235,47 @@ describe("showing a state on the action", () => {
     expect(detailsOf("setPopup")).toEqual([
       { tabId: 7, popup: copy.popup === null ? "" : popupPage },
     ]);
-    expect(detailsOf("setBadgeBackgroundColor")).toHaveLength(copy.badge === "!" ? 1 : 0);
+    // The colour is asserted, not counted. It belongs to the button rather than to the
+    // badge text, so a state that simply declines to set it keeps whatever the previous
+    // state left behind.
+    expect(detailsOf("setBadgeBackgroundColor")).toEqual([
+      { tabId: 7, color: copy.badge === "!" ? "#d93025" : "#5f6368" },
+    ]);
     await expect(session.readState(7)).resolves.toBe(name);
+  });
+
+  // The path a user actually walks after a failure: read the popup, press Try again.
+  it("drops the failure colour when a retry goes back in flight", async () => {
+    const { state, detailsOf } = subject();
+    await state.show(7, "noReply");
+    await state.clear(7);
+    await state.show(7, "inFlight");
+
+    expect(detailsOf("setBadgeBackgroundColor").at(-1)).toEqual({ tabId: 7, color: "#5f6368" });
+  });
+
+  it("publishes a terminal state only while its Handoff is still the tab's", async () => {
+    const { state, session, detailsOf } = subject();
+    await state.show(7, "inFlight");
+    const during = detailsOf("setBadgeText").length;
+
+    // The user navigates away while the Bridge is still waiting for Approval, and the
+    // reply lands afterwards.
+    await state.clear(7);
+    await state.settle(7, "noReply");
+
+    expect(detailsOf("setBadgeText").length).toBe(during + 1);
+    expect(detailsOf("setBadgeText").at(-1)).toEqual({ tabId: 7, text: "" });
+    expect(detailsOf("setPopup").at(-1)).toEqual({ tabId: 7, popup: "" });
+    await expect(session.readState(7)).resolves.toBeNull();
+  });
+
+  it("publishes a terminal state when the tab stayed put", async () => {
+    const { state, session } = subject();
+    await state.show(7, "inFlight");
+    await state.settle(7, "noReply");
+
+    await expect(session.readState(7)).resolves.toBe("noReply");
   });
 
   it("clears back to idle, dropping the popup and the record", async () => {

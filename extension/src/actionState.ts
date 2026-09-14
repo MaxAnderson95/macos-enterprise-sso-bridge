@@ -18,7 +18,18 @@ export const attentionBadge = "!";
 /** The badge while a Handoff is in flight. There is no success badge. */
 export const inFlightBadge = "…";
 
+/** The state a running Handoff leaves recorded, and the token `settle` checks for. */
+const inFlightState = "inFlight";
+
 const attentionColor = "#d93025";
+
+/**
+ * What every other state's badge is drawn on. The colour is a property of the button,
+ * not of the badge text, so leaving it alone after an attention state would draw the
+ * next `…` on red and make a retry look like the failure it is replacing. Grey reads as
+ * ordinary progress; the empty idle badge shows nothing either way.
+ */
+const ordinaryColor = "#5f6368";
 
 /** The packaged page attached with `action.setPopup`, by relative path. */
 export const popupPage = "popup.html";
@@ -188,6 +199,15 @@ function actionArea(): ActionArea {
 export interface ActionState {
   /** Puts a tab into a state: badge, title, popup, and the record the popup reads. */
   show(tabId: number, name: StateName): Promise<void>;
+  /**
+   * The same, for a state that ends a Handoff, and only while that Handoff is still the
+   * thing the tab is doing. A Handoff outlives the page it started on: the user can
+   * navigate away while the Bridge is waiting for Approval, and the reply still arrives
+   * afterwards. Publishing it then would put a red badge and an explanation onto a page
+   * the sign-in has nothing to do with, and leave the next click explaining an abandoned
+   * attempt instead of starting a new one.
+   */
+  settle(tabId: number, name: StateName): Promise<void>;
   /** Back to idle, dropping the record and the popup. Cheap when there is no state. */
   clear(tabId: number): Promise<void>;
 }
@@ -205,9 +225,10 @@ export function actionState(
   async function apply(tabId: number, name: StateName) {
     const copy = stateCopy[name];
     await area.setBadgeText({ tabId, text: copy.badge });
-    if (copy.badge === attentionBadge) {
-      await area.setBadgeBackgroundColor({ tabId, color: attentionColor });
-    }
+    await area.setBadgeBackgroundColor({
+      tabId,
+      color: copy.badge === attentionBadge ? attentionColor : ordinaryColor,
+    });
     await area.setTitle({ tabId, title: copy.title });
     // An empty string is the documented reset in both engines: the popup is disabled
     // and `action.onClicked` fires again, which is what makes the next click start a
@@ -217,6 +238,17 @@ export function actionState(
 
   return {
     async show(tabId, name) {
+      await apply(tabId, name);
+      await session.recordState(tabId, name);
+    },
+
+    // The in-flight record is the token. `tabs.onUpdated` clears it the moment the tab
+    // loads anything, so finding it still there is what says this Handoff is still the
+    // one the tab is waiting on.
+    async settle(tabId, name) {
+      if ((await session.readState(tabId)) !== inFlightState) {
+        return;
+      }
       await apply(tabId, name);
       await session.recordState(tabId, name);
     },

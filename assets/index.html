@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Enterprise SSO Bridge icon set</title>
+<style>
+  :root {
+    --field-top: #22415E;
+    --field: #0F1E2E;
+    --field-deep: #081220;
+    --cable: #CBDCEC;
+    --cable-dim: #7C93A8;
+    --rule: rgba(203, 220, 236, 0.16);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 72px 32px 96px;
+    background: radial-gradient(120% 80% at 50% 0%, var(--field-top) 0%, var(--field) 45%, var(--field-deep) 100%);
+    background-attachment: fixed;
+    color: var(--cable);
+    font: 400 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { max-width: 1060px; margin: 0 auto; }
+  h1 {
+    font-family: Superclarendon, "Bookman Old Style", Rockwell, Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(38px, 6vw, 62px);
+    line-height: 1.04;
+    letter-spacing: -0.015em;
+    color: #EAF2F9;
+    margin: 0 0 18px;
+  }
+  h2 {
+    font-family: Superclarendon, "Bookman Old Style", Rockwell, Georgia, serif;
+    font-size: 21px;
+    font-weight: 700;
+    color: #EAF2F9;
+    margin: 0 0 6px;
+  }
+  p { margin: 0 0 14px; max-width: 66ch; color: #C4D5E5; }
+  .lede { font-size: 19px; color: #D8E5F0; max-width: 58ch; }
+  section { margin-top: 72px; padding-top: 28px; border-top: 1px solid var(--rule); }
+  .hero { display: grid; grid-template-columns: 320px 1fr; gap: 48px; align-items: center; }
+  .hero img { width: 320px; height: 320px; display: block; filter: drop-shadow(0 24px 48px rgba(0,0,0,0.55)); }
+  .ladder { display: flex; align-items: flex-end; gap: 40px; flex-wrap: wrap; margin-top: 26px; }
+  .ladder figure { margin: 0; text-align: center; }
+  .ladder img { display: block; margin: 0 auto 10px; }
+  figcaption { font-size: 13px; color: var(--cable-dim); font-variant-numeric: tabular-nums; }
+  .bars { display: grid; gap: 18px; margin-top: 26px; }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 11px 16px; border-radius: 10px; }
+  .bar.light { background: #F1F3F4; border: 1px solid #DADCE0; }
+  .bar.dark { background: #2B2A33; border: 1px solid #42414D; }
+  .bar .url {
+    flex: 1; height: 26px; border-radius: 13px; background: rgba(0,0,0,0.06);
+    display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: #5F6368;
+  }
+  .bar.dark .url { background: rgba(255,255,255,0.09); color: #B9BBC4; }
+  .bar img { width: 16px; height: 16px; }
+  .bar .tag { font-size: 12px; color: #5F6368; }
+  .bar.dark .tag { color: #9EA3AE; }
+  .badge-row { display: flex; gap: 34px; margin-top: 26px; flex-wrap: wrap; }
+  .chip { position: relative; width: 48px; height: 48px; margin: 0 auto 10px; }
+  .chip img { width: 32px; height: 32px; position: absolute; left: 8px; top: 8px; }
+  .dot {
+    position: absolute; right: 3px; bottom: 7px; min-width: 20px; height: 16px;
+    border-radius: 8px; font: 600 11px/16px system-ui; color: #fff; padding: 0 5px;
+  }
+  .dot.wait { background: #5A6B7C; }
+  .dot.stop { background: #C6321B; }
+  .badge-cell { text-align: center; }
+  .palette { display: flex; margin-top: 26px; border-radius: 12px; overflow: hidden; }
+  .swatch {
+    flex: 1; padding: 78px 14px 14px; font-size: 12px; font-variant-numeric: tabular-nums;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.14);
+  }
+  .notes { columns: 2; column-gap: 48px; margin-top: 20px; }
+  .notes p { break-inside: avoid; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em; color: #E6EEF6; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="hero">
+    <img src="app-icon-1024.png" alt="Enterprise SSO Bridge app icon">
+    <div>
+      <h1>It is called a<br>Bridge. So it is<br>a bridge.</h1>
+      <p class="lede">Two towers, a main cable sagging to meet the deck at midspan, hangers, and side spans running down to their anchorages. Drawn as an elevation, the way a bridge is drawn on a drawing.</p>
+    </div>
+  </div>
+
+  <section>
+    <h2>Why the literal thing works here</h2>
+    <p>The product's name is the picture, so the icon needs no decoding and no metaphor to explain. A suspension bridge also has a silhouette almost nobody misreads: nothing else in a Dock is two towers with a cable slung between them.</p>
+    <p>International Orange earns its place twice. It is the colour the Golden Gate is actually painted, specified because it holds against sky and fog, and it is the one hue that keeps contrast on both a white Chromium toolbar and a near-black Gecko one. Deliberately not Microsoft blue: Entra is the only identity provider v1 implements, but this is not a Microsoft product and should not dress like one.</p>
+  </section>
+
+  <section>
+    <h2>Engineering the drawing</h2>
+    <p>The cables are computed, not sketched. The main span is a parabola through both tower saddles, sagging exactly to the deck at midspan the way a real main cable does; each side span is a parabola with its vertex at the anchorage, so it leaves the tower steeply and flattens as it lands. Over each tower the cable runs flat across the saddle instead of dipping between the legs, which is both what a saddle does and what stops a bright kink appearing inside the tower.</p>
+    <p>The towers sit at a little over half the icon's width apart and stand about a third of its height above the deck, which leaves enough sky and water that the bridge reads as a view rather than as a diagram pressed against the frame.</p>
+    <p>The body is a superellipse sampled from <code>|x|⁵ + |y|⁵ = 1</code>, not a rounded rectangle, so the corners stay continuous the way the system's own icons do.</p>
+  </section>
+
+  <section>
+    <h2>Two cuts, because 16 px is not a small 512</h2>
+    <p>At 16 px one unit of the drawing canvas is a sixty-fourth of a device pixel, so the full drawing's hangers and tower braces vanish into the field. At 16 and 32 px the icon switches to a second cut: single-post towers, no braces, a heavier deck, a thicker cable, no hangers, and a flat field instead of the gradient. From 64 px up the full drawing holds, so it is what the iconset uses there.</p>
+    <div class="ladder">
+      <figure><img src="AppIcon.iconset/icon_256x256.png" width="256" height="256" alt=""><figcaption>256</figcaption></figure>
+      <figure><img src="AppIcon.iconset/icon_128x128@2x.png" width="128" height="128" alt=""><figcaption>128</figcaption></figure>
+      <figure><img src="AppIcon.iconset/icon_128x128.png" width="64" height="64" alt=""><figcaption>64</figcaption></figure>
+      <figure><img src="AppIcon.iconset/icon_32x32@2x.png" width="32" height="32" alt=""><figcaption>32</figcaption></figure>
+      <figure><img src="AppIcon.iconset/icon_16x16@2x.png" width="16" height="16" alt=""><figcaption>16</figcaption></figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Toolbar icon, in both engines</h2>
+    <p>One colour, no container, no plate behind it. A tinted glyph would need a light and a dark variant, and Chromium has no theme-aware icon key to switch them with, so the mark carries its own colour instead.</p>
+    <p>The toolbar cut is cropped to the main span and drops the side cables entirely. Run down to their anchorages at this size they stop reading as cable and start reading as two filled triangles. The towers stand well above the cable on purpose: without that, two peaks and a valley collapse into a letter M.</p>
+    <div class="bars">
+      <div class="bar light">
+        <span class="url">app.example.com/sso/login</span>
+        <img src="extension/icon-16@2x.png" alt="">
+        <span class="tag">Chromium, light</span>
+      </div>
+      <div class="bar dark">
+        <span class="url">app.example.com/sso/login</span>
+        <img src="extension/icon-16@2x.png" alt="">
+        <span class="tag">Gecko, dark</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The icon never changes; the badge does</h2>
+    <p>State belongs to the badge, which the Extension already owns: empty when idle, an ellipsis while a Handoff is in flight, a red mark when something needs attention. Artwork that swaps per state costs four more assets per engine and makes the button harder to find in a toolbar, which is its whole job the rest of the time.</p>
+    <div class="badge-row">
+      <div class="badge-cell"><div class="chip"><img src="extension/icon-128.png" alt=""></div><figcaption>Idle</figcaption></div>
+      <div class="badge-cell"><div class="chip"><img src="extension/icon-128.png" alt=""><span class="dot wait">…</span></div><figcaption>In flight</figcaption></div>
+      <div class="badge-cell"><div class="chip"><img src="extension/icon-128.png" alt=""><span class="dot stop">!</span></div><figcaption>Needs you</figcaption></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Palette</h2>
+    <div class="palette">
+      <div class="swatch" style="background:#22415E;color:#DCE8F2">#22415E sky, top</div>
+      <div class="swatch" style="background:#081220;color:#9FB4C8">#081220 water</div>
+      <div class="swatch" style="background:#CBDCEC;color:#16283A">#CBDCEC cable</div>
+      <div class="swatch" style="background:#E8420B;color:#FFE6D8">#E8420B international orange</div>
+      <div class="swatch" style="background:#FF7A35;color:#4A1600">#FF7A35 deck, lit</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What is in the archive</h2>
+    <div class="notes">
+      <p><code>svg/</code> holds the four masters. Everything else is rendered from them by <code>make.py</code>, which builds one <code>Bridge</code> from its own dimensions, so a wider span or a deeper sag is a number rather than a redraw.</p>
+      <p><code>EnterpriseSSOBridge.icns</code> and <code>AppIcon.iconset/</code> are the app icon, built with <code>iconutil</code>, which is part of why the build needs no Xcode project.</p>
+      <p><code>extension/</code> holds <code>icon-16</code>, <code>icon-32</code>, <code>icon-48</code>, and <code>icon-128</code> for the manifests' <code>icons</code> and <code>action.default_icon</code> keys, identical in both builds.</p>
+      <p><code>app-icon-1024.png</code> is for anywhere a flat image is wanted, such as a README or a release page.</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

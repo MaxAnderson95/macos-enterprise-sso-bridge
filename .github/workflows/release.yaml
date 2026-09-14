@@ -26,16 +26,17 @@ jobs:
           cache: pnpm
           cache-dependency-path: extension/pnpm-lock.yaml
 
-      # The tag is the only source of the version, so everything downstream reads
-      # this one value. Extension manifests accept only a dotted numeric version.
+      # Package metadata and extension manifests need a numeric version. Keep the
+      # RC suffix in release asset names so downloads identify the candidate.
       - name: Take the version from the tag
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]]; then
-            echo "tag $GITHUB_REF_NAME does not carry a dotted numeric version"
+          release_version="${GITHUB_REF_NAME#v}"
+          if ! [[ "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc[1-9][0-9]*)?$ ]]; then
+            echo "tag $GITHUB_REF_NAME must be vX.Y.Z or vX.Y.Z-rcN"
             exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "VERSION=${release_version%%-*}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
 
       - name: Install the Extension's dependencies
         working-directory: extension
@@ -59,21 +60,28 @@ jobs:
           node tools/pack-crx.mjs \
             --zip extension/dist/chromium.zip \
             --key "$key" \
-            --output "dist/enterprise-sso-bridge-$VERSION.crx"
+            --output "dist/enterprise-sso-bridge-$RELEASE_VERSION.crx"
 
       # Gecko installs the same zip; the extension is only the file name Zen's
       # Install Add-on From File picker expects.
       - name: Name the Gecko bundle as an add-on
-        run: cp extension/dist/gecko.zip "dist/enterprise-sso-bridge-$VERSION.xpi"
+        run: cp extension/dist/gecko.zip "dist/enterprise-sso-bridge-$RELEASE_VERSION.xpi"
 
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          release_flags=()
+          if [[ "$RELEASE_VERSION" == *-rc* ]]; then
+            release_flags+=(--prerelease --latest=false)
+            mv "dist/EnterpriseSSOBridge-$VERSION.pkg" "dist/EnterpriseSSOBridge-$RELEASE_VERSION.pkg"
+          fi
           gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
-            "dist/EnterpriseSSOBridge-$VERSION.pkg" \
-            "dist/enterprise-sso-bridge-$VERSION.crx" \
-            "dist/enterprise-sso-bridge-$VERSION.xpi" \
+            "${release_flags[@]}" \
+            "dist/EnterpriseSSOBridge-$RELEASE_VERSION.pkg" \
+            "dist/enterprise-sso-bridge-$RELEASE_VERSION.crx" \
+            "dist/enterprise-sso-bridge-$RELEASE_VERSION.xpi" \
             packaging/install-chromium-extension.sh

@@ -1,20 +1,11 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { renderManifest } from "../build.mjs";
 import { entryOriginMatchPatterns } from "../src/generated/entryOrigins";
+import { deriveChromiumExtensionId } from "../../tools/extension-ids.mjs";
 
-// Chromium derives the extension ID from the `key` field: the first 16 bytes of
-// SHA-256 over the DER public key, hex-encoded, with 0-f remapped to a-p. Both
-// native-messaging manifests name that ID, so a key change is a breaking change
-// and this test is the tripwire for one.
+// Both native-messaging manifests name the derived Chromium ID, so a change to the
+// committed `key` is a breaking change and this literal is the tripwire for one.
 const chromiumExtensionId = "ddalcfdgiklpbglknegedadiaclfkncc";
-
-function deriveExtensionId(key: string) {
-  const digest = createHash("sha256").update(Buffer.from(key, "base64")).digest();
-  return [...digest.subarray(0, 16).toString("hex")]
-    .map((c) => String.fromCharCode(c.charCodeAt(0) + (c >= "a" ? 10 : 49)))
-    .join("");
-}
 
 describe.each(["chromium", "gecko"])("the %s manifest", (engine) => {
   const manifest = renderManifest(engine, "1.2.3");
@@ -52,7 +43,7 @@ describe("the engine-specific keys", () => {
   const gecko = renderManifest("gecko", "0.0.0");
 
   it("pins the Chromium extension ID through the committed key", () => {
-    expect(deriveExtensionId(chromium.key)).toBe(chromiumExtensionId);
+    expect(deriveChromiumExtensionId(chromium.key)).toBe(chromiumExtensionId);
   });
 
   it("splits incognito in Chromium and leaves Gecko on the default", () => {

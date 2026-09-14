@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { renderManifest } from "../build.mjs";
+import { entryOriginMatchPatterns } from "../src/generated/entryOrigins";
 
 // Chromium derives the extension ID from the `key` field: the first 16 bytes of
 // SHA-256 over the DER public key, hex-encoded, with 0-f remapped to a-p. Both
@@ -24,7 +25,12 @@ describe.each(["chromium", "gecko"])("the %s manifest", (engine) => {
 
   it("asks for exactly the permissions the spec allows", () => {
     expect(manifest.permissions).toEqual(["webRequest", "storage", "nativeMessaging", "activeTab"]);
-    expect(manifest.host_permissions).toEqual(["https://login.microsoftonline.com/*"]);
+  });
+
+  // The manifest reads the data file and this reads the generated constant, so the
+  // pair fails if either half of the generation drifts from the source of truth.
+  it("takes host_permissions from the entry-origin data file", () => {
+    expect(manifest.host_permissions).toEqual(entryOriginMatchPatterns);
   });
 
   it("keeps form-action in the extension-pages CSP for the Relay page", () => {

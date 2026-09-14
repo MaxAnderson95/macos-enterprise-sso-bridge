@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
+import { entryOriginMatchPatterns } from "../tools/generate.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const distRoot = join(root, "dist");
@@ -16,15 +17,18 @@ const iconSizes = [16, 32, 48, 128];
 const pages = ["popup.html", "relay.html"];
 
 /**
- * The committed manifest for one engine with the release version applied. This is
- * the exact object written to dist, so asserting on it asserts on what ships.
+ * The committed manifest for one engine with the release version and the entry
+ * origins applied. This is the exact object written to dist, so asserting on it
+ * asserts on what ships. The origins come from identity-providers/entra.json so
+ * that host_permissions cannot drift from the Bridge's adapter and leave capture
+ * failing silently.
  */
 export function renderManifest(engine, version) {
   if (!/^\d+(\.\d+)*$/.test(version)) {
     throw new Error(`version must be dotted numeric, got '${version}'`);
   }
   const manifest = JSON.parse(readFileSync(join(root, `manifest.${engine}.json`), "utf8"));
-  return { ...manifest, version };
+  return { ...manifest, version, host_permissions: entryOriginMatchPatterns };
 }
 
 async function buildEngine(engine, version) {

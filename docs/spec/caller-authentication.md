@@ -44,7 +44,9 @@ The path and bundle ID of a local process are not Handoff data, so the logging i
 
 ## User-launch carve-out
 
-A parent satisfying Apple's requirement for Finder, Dock, or launchd is recognized as a user launch. The Bridge shows a window explaining that it runs when a browser needs it, and quits when dismissed. It cannot start a Handoff either way: a user launch brings no Sign-in request and no pipe.
+A parent satisfying Apple's requirement for Finder or Dock is recognized as a user launch. The Bridge shows a window explaining that it runs when a browser needs it, and quits when dismissed. It cannot start a Handoff either way: a user launch brings no Sign-in request and no pipe.
+
+launchd is recognized by being PID 1 rather than by a requirement, because it is the one process whose task port a normal user cannot get: `task_name_for_pid(1)` returns `KERN_FAILURE`, so there is no audit token to resolve, and the PID guest attribute is not a mechanism this design admits. In practice that is the case that matters, since Finder, the Dock, and `open` all hand the launch to launchd, which is the Bridge's parent. A process orphaned by a browser that died mid-spawn lands there too, and has just as little to do.
 
 Every other non-browser parent exits silently. The cost is one more entry in the requirement table, against a double-click that otherwise does nothing at all.
 

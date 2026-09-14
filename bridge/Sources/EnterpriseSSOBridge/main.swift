@@ -2,21 +2,7 @@ import AppKit
 import BridgeCore
 import Foundation
 
-// Caller authentication belongs above everything in this file, before a byte of
-// stdin is read and before `NSApplication` exists. It arrives with issue #21.
-
-/// Native messaging hands the Bridge a pipe on stdin. A Finder launch hands it
-/// `/dev/null`, which is a character device, so this tells the two apart well enough
-/// to keep the user-launch window reachable on a branch where caller authentication
-/// does not exist yet. Issue #21 replaces it: the `AllowedBrowser` match is the real
-/// answer to "did a browser start me".
-func stdinIsPipe() -> Bool {
-  var status = stat()
-  guard fstat(STDIN_FILENO, &status) == 0 else { return false }
-  return (status.st_mode & S_IFMT) == S_IFIFO
-}
-
-func runHandoff() -> Never {
+func runHandoff(caller: AllowedBrowser) -> Never {
   let channel = ProtocolChannel.standardIO()
   let received: ProtocolChannel.ReceivedRequest
   do {
@@ -34,7 +20,9 @@ func runHandoff() -> Never {
       // Temporary. Planning the Handoff is issue #23, the Approval is #24, and the
       // replay is #25; until the first of those lands there is nothing to approve,
       // so the honest terminal response is the one the user would have given.
-      BridgeLog.wire.info("no Handoff pipeline on this build, answering declined")
+      BridgeLog.wire.info(
+        "no Handoff pipeline on this build, answering declined to \(caller.displayName, privacy: .public)"
+      )
       try channel.send(.declined)
     }
   } catch {
@@ -54,8 +42,15 @@ func runUserLaunchWindow() -> Never {
   exit(0)
 }
 
-if stdinIsPipe() {
-  runHandoff()
-} else {
+// The gate, above everything: no `NSApplication`, no stdin, nothing but this until it
+// answers. See docs/spec/caller-authentication.md.
+let caller: AllowedBrowser
+do {
+  caller = try CallerAuthentication.verify()
+} catch CallerAuthenticationFailure.userLaunch {
   runUserLaunchWindow()
+} catch {
+  exit(1)
 }
+
+runHandoff(caller: caller)

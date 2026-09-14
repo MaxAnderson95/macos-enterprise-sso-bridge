@@ -11,4 +11,7 @@ public enum BridgeLog {
 
   /// The native-messaging exchange: framing, decoding, and the terminal response.
   public static let wire = Logger(subsystem: subsystem, category: "wire")
+
+  /// Who launched the Bridge: the matched browser, or a rejected Caller's identity.
+  public static let caller = Logger(subsystem: subsystem, category: "caller")
 }

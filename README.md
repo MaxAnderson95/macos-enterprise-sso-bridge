@@ -22,4 +22,6 @@ Install instructions, supported browsers, and MDM setup land here when there is 
 | `docs/adr/` | Architecture decision records. |
 | `docs/research/` | Findings behind the decisions, with sources. |
 | `docs/testing/` | The manual acceptance checklist. |
+| `docs/development/` | Running the two halves locally. |
+| `fixtures/protocol/` | The wire shapes, read by both halves' tests. |
 | `assets/` | Icon masters and the generator that produces them. |

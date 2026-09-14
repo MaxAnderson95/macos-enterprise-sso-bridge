@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  bridge:
+    runs-on: macos-26
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the runner's Swift against what the package requires
+        run: |
+          required="$(sed -n 's|^// swift-tools-version:[[:space:]]*\([0-9.]*\).*|\1|p' bridge/Package.swift)"
+          swift --version
+          actual="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p')"
+          if [ -z "$required" ] || [ -z "$actual" ]; then
+            echo "could not determine the required ($required) or installed ($actual) Swift version"
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -1)" != "$required" ]; then
+            echo "runner has Swift $actual, package requires $required or newer"
+            exit 1
+          fi
+
+      - name: Lint
+        run: swift format lint --strict --recursive --parallel bridge
+
+      - name: Build
+        run: swift build --package-path bridge
+
+      - name: Test
+        run: swift test --package-path bridge
+
+      - name: Build the app
+        run: packaging/build-app.sh --version 0.0.0

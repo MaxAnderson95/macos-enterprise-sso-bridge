@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "url": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/oauth2/v2.0/authorize?client_id=11111111-1111-1111-1111-111111111111&response_type=code&redirect_uri=https%3A%2F%2Fapp.example.com%2Fsso%2Fcallback&scope=openid+profile&state=abc123",
+  "method": "GET"
+}

@@ -1,0 +1,5 @@
+{
+  "result": "error",
+  "code": "navigation_failed",
+  "detail": "NSURLErrorDomain -1003"
+}

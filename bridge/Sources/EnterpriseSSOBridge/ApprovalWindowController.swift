@@ -61,8 +61,16 @@ final class ApprovalWindowController: NSObject, NSWindowDelegate {
   }
 
   private func contentView() -> NSView {
-    let heading = NSTextField(labelWithString: prompt.heading)
+    // Wrapping, and by character, because the heading names the Callback destination
+    // and a host long enough to overflow 540 pt would otherwise be clipped at the right
+    // edge. The clipped part is the end, which is exactly the part that distinguishes
+    // `trusted.example.com.<padding>.attacker.example` from the host the user expects,
+    // and the body does not repeat it. An Approval that hides where the response goes
+    // is not the control ADR 0002 describes.
+    let heading = NSTextField(wrappingLabelWithString: prompt.heading)
     heading.font = .boldSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .title3).pointSize)
+    heading.lineBreakMode = .byCharWrapping
+    heading.preferredMaxLayoutWidth = Self.width - Self.margin * 2
 
     let body = NSTextField(wrappingLabelWithString: prompt.body)
     body.textColor = .secondaryLabelColor

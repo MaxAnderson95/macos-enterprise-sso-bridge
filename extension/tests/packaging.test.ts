@@ -1,4 +1,9 @@
 import { createPublicKey, createVerify, generateKeyPairSync } from "node:crypto";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { deriveChromiumExtensionId } from "../../tools/extension-ids.mjs";
 import { hostManifest, systemManifests } from "../../tools/native-host-manifests.mjs";
@@ -39,6 +44,75 @@ function protobufFields(message: Buffer): Map<number, Buffer> {
 const headerFields = protobufFields(header);
 const proof = protobufFields(headerFields.get(2)!);
 const signedHeaderData = headerFields.get(10000)!;
+
+describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
+  it.each(["missing development", "live development", "unknown", "malformed", "absent"])(
+    "handles a %s user-level registration",
+    (scenario) => {
+      const home = mkdtempSync(join(tmpdir(), "bridge-install-"));
+      try {
+        const support = join(home, "Library/Application Support");
+        const manifestPath = join(
+          support,
+          "net.imput.helium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json",
+        );
+        const target = join(home, "development bridge");
+        if (scenario === "live development") writeFileSync(target, "existing build");
+        const manifest =
+          scenario === "malformed"
+            ? "invalid json"
+            : JSON.stringify({
+                name: "tech.maxanderson.enterprise_sso_bridge",
+                description:
+                  scenario === "unknown"
+                    ? "Custom registration"
+                    : "Enterprise SSO Bridge (development build)",
+                path: target,
+              });
+        if (scenario !== "absent") {
+          mkdirSync(dirname(manifestPath), { recursive: true });
+          writeFileSync(manifestPath, manifest);
+        }
+        writeFileSync(
+          join(home, "manifest.json"),
+          JSON.stringify({
+            version: "0.1.0",
+            key: publicKeyDer.toString("base64"),
+          }),
+        );
+        execFileSync("zip", ["-q", "extension.zip", "manifest.json"], { cwd: home });
+        const crxPath = join(home, "extension.crx");
+        writeFileSync(crxPath, packCrx(readFileSync(join(home, "extension.zip")), privateKeyPem));
+        const script = fileURLToPath(
+          new URL("../../packaging/install-chromium-extension.sh", import.meta.url),
+        );
+        const run = () =>
+          spawnSync("/bin/bash", [script, crxPath], {
+            env: { ...process.env, HOME: home },
+            encoding: "utf8",
+          });
+        const result = run();
+        expect(result.status, result.stderr).toBe(0);
+        if (scenario === "missing development" || scenario === "absent") {
+          expect(existsSync(manifestPath)).toBe(false);
+          expect(result.stderr).toBe("");
+        } else {
+          expect(readFileSync(manifestPath, "utf8")).toBe(manifest);
+          expect(result.stderr).toContain("may override the installed Bridge");
+        }
+        const id = deriveChromiumExtensionId(publicKeyDer.toString("base64"));
+        const preferences = JSON.parse(
+          readFileSync(join(support, `net.imput.helium/External Extensions/${id}.json`), "utf8"),
+        );
+        expect(preferences.external_version).toBe("0.1.0");
+        expect(readFileSync(preferences.external_crx)).toEqual(readFileSync(crxPath));
+        expect(run().status).toBe(0);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+});
 
 describe("the packed CRX", () => {
   it("starts with the CRX3 prologue and ends with the archive unchanged", () => {

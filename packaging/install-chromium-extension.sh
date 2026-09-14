@@ -64,6 +64,25 @@ cat >"$external_prefs_dir/$extension_id.json" <<JSON
 }
 JSON
 
+# A user-level development registration shadows the release's system manifest,
+# even when a moved checkout or migrated home directory left its target missing.
+host_name="tech.maxanderson.enterprise_sso_bridge"
+development_manifest="$support/net.imput.helium/NativeMessagingHosts/$host_name.json"
+if [[ -e "$development_manifest" || -L "$development_manifest" ]]; then
+	name="$(plutil -extract name raw -o - -- "$development_manifest" 2>/dev/null || true)"
+	description="$(plutil -extract description raw -o - -- "$development_manifest" 2>/dev/null || true)"
+	target="$(plutil -extract path raw -o - -- "$development_manifest" 2>/dev/null || true)"
+	if [[ ! -L "$development_manifest" && "$name" == "$host_name" &&
+		"$description" == "Enterprise SSO Bridge (development build)" &&
+		"$target" == /* && ! -e "$target" && ! -L "$target" ]]; then
+		rm "$development_manifest"
+		echo "Removed stale development registration: $development_manifest"
+	else
+		echo "Warning: user-level native-messaging registration may override the installed Bridge: $development_manifest" >&2
+		echo "Left it unchanged; inspect it if Helium cannot reach the release Bridge." >&2
+	fi
+fi
+
 echo "installed $extension_id $version"
 echo "  package: $installed_crx"
 echo "  external preferences: $external_prefs_dir/$extension_id.json"

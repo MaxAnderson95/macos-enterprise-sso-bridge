@@ -14,4 +14,8 @@ public enum BridgeLog {
 
   /// Who launched the Bridge: the matched browser, or a rejected Caller's identity.
   public static let caller = Logger(subsystem: subsystem, category: "caller")
+
+  /// Planning a Handoff: which adapter claimed the request, and what it could say
+  /// about where the Callback lands.
+  public static let handoff = Logger(subsystem: subsystem, category: "handoff")
 }

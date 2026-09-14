@@ -47,6 +47,16 @@ public enum CallbackBody {
       == urlencodedMediaType
   }
 
+  /// Whether the request itself said it is sending something other than urlencoded.
+  ///
+  /// This is not the negation of `isURLEncoded`: an absent header says nothing, and that
+  /// is the case the DOM fallback exists for. A header naming another media type is a
+  /// refusal the document cannot overturn, because a submit button's `formenctype`
+  /// changes what WebKit sends without changing the `form.enctype` the fallback reads.
+  public static func declaresOtherMediaType(_ contentType: String?) -> Bool {
+    contentType != nil && !isURLEncoded(contentType)
+  }
+
   /// Path 1: the request's own body, when WebKit kept one and it is urlencoded.
   public static func fromHTTPBody(_ body: Data?, contentType: String?) -> Extraction? {
     guard isURLEncoded(contentType), let body, !body.isEmpty,

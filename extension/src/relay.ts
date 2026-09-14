@@ -20,21 +20,26 @@ function showUnavailable() {
 /**
  * Builds the Callback's form and submits it.
  *
- * `HTMLFormElement.prototype.submit` rather than `form.submit()`, because a form's own
- * named controls shadow its properties, and the field names here come from the
- * identity provider rather than from this Extension.
+ * A form's own named controls shadow its properties, and the field names here come from
+ * the identity provider rather than from this Extension, so nothing reaches the form
+ * through a property that a field could have replaced. The inputs are collected in a
+ * fragment, which has no named controls to shadow anything, and `submit` comes off the
+ * prototype. A field named `append` would otherwise replace the method building the
+ * form and throw before the assertion was ever sent.
  */
 function submit(callback: PostCallback) {
   const form = document.createElement("form");
   form.method = "POST";
   form.action = callback.url;
+  const fields = document.createDocumentFragment();
   for (const [name, value] of callback.fields) {
     const input = document.createElement("input");
     input.type = "hidden";
     input.name = name;
     input.value = value;
-    form.append(input);
+    fields.append(input);
   }
+  HTMLFormElement.prototype.append.call(form, fields);
   document.body.append(form);
   HTMLFormElement.prototype.submit.call(form);
 }

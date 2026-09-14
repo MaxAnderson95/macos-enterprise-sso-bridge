@@ -36,6 +36,24 @@ struct CallbackBodyTests {
       CallbackBody.fromHTTPBody(Data("SAMLResponse=PHNhbWxw".utf8), contentType: nil) == nil)
   }
 
+  /// An explicit refusal is not the same as silence. The DOM fallback exists for a body
+  /// WebKit did not keep, and a submit button's `formenctype` changes what is sent
+  /// without changing the `form.enctype` the fallback reads, so a stated media type has
+  /// to end the question rather than hand it to the document.
+  @Test(
+    "Only a stated non-urlencoded media type is a refusal the document cannot overturn",
+    arguments: [
+      ("multipart/form-data; boundary=x", true),
+      ("application/json", true),
+      ("application/x-www-form-urlencoded", false),
+      ("application/x-www-form-urlencoded; charset=utf-8", false),
+      (nil as String?, false),
+    ]
+  )
+  func declaresOtherMediaType(_ contentType: String?, _ refuses: Bool) {
+    #expect(CallbackBody.declaresOtherMediaType(contentType) == refuses)
+  }
+
   @Test("A urlencoded body becomes its fields, in order, repeats and all")
   func httpBody() throws {
     let body = "SAMLResponse=PHNhbWxw&RelayState=a+b&RelayState=%2Fhome&empty=&flag"

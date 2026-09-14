@@ -113,6 +113,17 @@ final class HandoffWebView: NSObject, WKNavigationDelegate {
       return extraction.fields
     }
 
+    // The DOM fallback is for a body WebKit did not keep, not for one it is sending
+    // under another media type. A submit button's `formenctype` changes what goes on the
+    // wire without changing the `form.enctype` the fallback reads, so consulting the
+    // document here would let a multipart POST be captured after the request already
+    // said it is not urlencoded.
+    let contentType = request.value(forHTTPHeaderField: "Content-Type")
+    if CallbackBody.declaresOtherMediaType(contentType) {
+      BridgeLog.navigation.info("callback body source: none, request is not urlencoded")
+      return []
+    }
+
     let script = CallbackBody.matchingFormScript(action: target)
     let answer = try? await webView.evaluateJavaScript(script)
     guard let extraction = CallbackBody.fromDOMForm(answer as? String) else {

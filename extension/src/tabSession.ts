@@ -1,15 +1,14 @@
-// Everything a Handoff has to remember between two events that may not share a
-// process: the captured Sign-in request and whether a Handoff is already running for
-// that tab. Chromium can evict the MV3 service worker between the navigation and the
-// click, and again between the click and the Bridge's reply, so none of it may live in
-// a module-level variable. `storage.session` is memory-only in both engines and dies
-// with the browser, which is the lifetime this state wants anyway.
+// Captures and claims survive background restarts in memory-only `storage.session`.
+// A claim inherited after a restart has no caller left to release it, so it can age
+// out. Locally active claims never expire while their caller is waiting for the Bridge.
 
 import { engineApi } from "./engineApi";
 import type { FormField, SignInRequest } from "./protocol";
 
 /** An attempt abandoned an hour ago must never replay, so a stale capture is ignored. */
 export const captureMaxAgeMs = 10 * 60 * 1000;
+
+const inheritedClaimMaxAgeMs = 30 * 60 * 1000;
 
 /** The part of `storage.session` this module uses, so a test can supply one. */
 export interface SessionArea {
@@ -39,7 +38,8 @@ export interface TabSession {
   /**
    * Marks a Handoff as running for this tab, or returns false when one already is, in
    * which case the caller does nothing at all: the claim was not taken and must not be
-   * released.
+   * released. An inherited claim older than thirty minutes may be replaced; a claim
+   * active in this instance never expires.
    */
   claimHandoff(tabId: number, startedAt: number): Promise<boolean>;
   /** The capture for a tab if one is younger than ten minutes, otherwise null. */
@@ -109,11 +109,11 @@ function sessionStorage(): SessionArea {
 }
 
 /**
- * The per-tab state, over one storage area. It caches nothing: a fresh instance after
- * an eviction reads exactly what the evicted one wrote, so there is nothing in front
- * of `storage.session` to lose.
+ * The per-tab state, over one storage area. The background uses one instance for all
+ * Handoffs. Captures, callbacks, and action states are shared with other documents;
+ * the active claim set belongs to the background instance driving the Handoffs.
  *
- * The one piece of memory it does keep is a per-tab promise chain, because claiming is
+ * A per-tab promise chain serializes claiming, because claiming is
  * a read followed by a write and two toolbar clicks can otherwise both read an absent
  * key and both start a Handoff. That chain only orders operations inside one worker,
  * which is the only place two of them can overlap; an evicted worker has nothing left
@@ -121,6 +121,7 @@ function sessionStorage(): SessionArea {
  */
 export function tabSession(area: SessionArea = sessionStorage()): TabSession {
   const chains = new Map<number, Promise<unknown>>();
+  const activeClaims = new Set<number>();
 
   function serialized<T>(tabId: number, operation: () => Promise<T>): Promise<T> {
     const result = (chains.get(tabId) ?? Promise.resolve()).then(operation, operation);
@@ -144,12 +145,22 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
 
     claimHandoff(tabId, startedAt) {
       return serialized(tabId, async () => {
+        if (activeClaims.has(tabId)) {
+          return false;
+        }
         const key = handoffKey(tabId);
-        const existing = await area.get([key]);
-        if (existing[key] !== undefined) {
+        const existing = (await area.get([key]))[key];
+        const stale =
+          typeof existing === "object" &&
+          existing !== null &&
+          "startedAt" in existing &&
+          typeof existing.startedAt === "number" &&
+          startedAt - existing.startedAt > inheritedClaimMaxAgeMs;
+        if (existing !== undefined && !stale) {
           return false;
         }
         await area.set({ [key]: { startedAt } });
+        activeClaims.add(tabId);
         return true;
       });
     },
@@ -167,6 +178,7 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
     // between a claim's read and its write.
     finishHandoff(tabId, end) {
       return serialized(tabId, async () => {
+        activeClaims.delete(tabId);
         await area.remove(
           end === "success" ? [handoffKey(tabId), captureKey(tabId)] : [handoffKey(tabId)],
         );
@@ -202,6 +214,7 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
 
     forgetTab(tabId) {
       return serialized(tabId, async () => {
+        activeClaims.delete(tabId);
         await area.remove([
           handoffKey(tabId),
           captureKey(tabId),

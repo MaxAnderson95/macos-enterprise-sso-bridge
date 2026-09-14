@@ -9,8 +9,7 @@ import { tabSession } from "./tabSession";
 import type { HandoffEnd } from "./tabSession";
 
 const session = tabSession();
-// Both hold no state of their own, so a second instance over the same storage area is
-// the same object for every purpose that matters here.
+// Action state shares storage with the popup and Relay page.
 const state = actionState();
 
 // Main-frame navigations skip the initiator permission check in both engines, so the

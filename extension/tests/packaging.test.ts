@@ -57,22 +57,29 @@ describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
           "net.imput.helium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json",
         );
         const target = join(home, "development bridge");
-        if (scenario === "live development") writeFileSync(target, "existing build");
-        const manifest =
-          scenario === "malformed"
-            ? "invalid json"
-            : JSON.stringify({
-                name: "tech.maxanderson.enterprise_sso_bridge",
-                description:
-                  scenario === "unknown"
-                    ? "Custom registration"
-                    : "Enterprise SSO Bridge (development build)",
-                path: target,
-              });
-        if (scenario !== "absent") {
+        if (scenario === "live development" || scenario === "missing development") {
+          writeFileSync(target, "existing build");
+          const devInstaller = fileURLToPath(
+            new URL("../../tools/install-dev-native-host.mjs", import.meta.url),
+          );
+          execFileSync(process.execPath, [devInstaller, "--executable", target], {
+            env: { ...process.env, HOME: home },
+          });
+          if (scenario === "missing development") rmSync(target);
+        } else if (scenario !== "absent") {
           mkdirSync(dirname(manifestPath), { recursive: true });
-          writeFileSync(manifestPath, manifest);
+          writeFileSync(
+            manifestPath,
+            scenario === "malformed"
+              ? "invalid json"
+              : JSON.stringify({
+                  name: "tech.maxanderson.enterprise_sso_bridge",
+                  description: "Custom registration",
+                  path: target,
+                }),
+          );
         }
+        const manifest = scenario === "absent" ? undefined : readFileSync(manifestPath, "utf8");
         writeFileSync(
           join(home, "manifest.json"),
           JSON.stringify({

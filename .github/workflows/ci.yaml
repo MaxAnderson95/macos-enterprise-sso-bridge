@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # Owns a check that belongs to neither half: the generated constants guard the Bridge
+  # and the Extension at once, and a stale one fails here rather than inside a toolchain
+  # job that would report the wrong half.
+  generated:
+    runs-on: macos-26
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Regenerate the entry-origin constants
+        run: node tools/generate.mjs
+
+      - name: Fail on a hand-edited or stale generated file
+        run: git diff --exit-code
+
+  bridge:
+    runs-on: macos-26
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check the runner's Swift against what the package requires
+        run: |
+          required="$(sed -n 's|^// swift-tools-version:[[:space:]]*\([0-9.]*\).*|\1|p' bridge/Package.swift)"
+          swift --version
+          actual="$(swift --version 2>&1 | sed -n 's/.*Apple Swift version \([0-9.]*\).*/\1/p')"
+          if [ -z "$required" ] || [ -z "$actual" ]; then
+            echo "could not determine the required ($required) or installed ($actual) Swift version"
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -1)" != "$required" ]; then
+            echo "runner has Swift $actual, package requires $required or newer"
+            exit 1
+          fi
+
+      - name: Lint
+        run: swift format lint --strict --recursive --parallel bridge
+
+      - name: Build
+        run: swift build --package-path bridge
+
+      - name: Test
+        run: swift test --package-path bridge
+
+      # Packaging runs on every commit so a break surfaces here rather than when
+      # someone is trying to cut a release. build-pkg.sh builds the app first.
+      - name: Set up Node for the host manifests
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Built under a restrictive umask on purpose. The payload's modes used to come
+      # from whoever ran the build, and --ownership recommended hands the result to
+      # root, so a 077 builder produced a root-owned 0700 app the browser could not
+      # traverse. Building this way here means the modes are the script's doing.
+      - name: Build the app and the installer package
+        run: umask 077 && packaging/build-pkg.sh --version 0.0.0
+
+      # The three payload paths are a contract with both browser engines, so a
+      # package that grew or lost one fails here.
+      - name: Check the package payload
+        run: |
+          expanded="$(mktemp -d)/pkg"
+          pkgutil --expand-full dist/EnterpriseSSOBridge-0.0.0.pkg "$expanded"
+          if [ -e "$expanded/Scripts" ]; then
+            echo "the package carries install scripts, which it must not"
+            exit 1
+          fi
+          payload="$expanded/Payload"
+          test -x "$payload/Applications/Enterprise SSO Bridge.app/Contents/MacOS/enterprise-sso-bridge"
+          test -f "$payload/Library/Application Support/Chromium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
+          test -f "$payload/Library/Application Support/Mozilla/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
+          others="$(cd "$payload" && find . -type f -not -path './Applications/*' | wc -l | tr -d ' ')"
+          if [ "$others" != "2" ]; then
+            echo "the package installs $others files outside the app, expected 2"
+            (cd "$payload" && find . -type f -not -path './Applications/*')
+            exit 1
+          fi
+          # The archive's own modes, not the checkout's. Everything installs as root, so
+          # a directory the user cannot traverse or a file it cannot read stops the
+          # browser launching the Bridge. The octal mode's last digit is the "other"
+          # permission: directories need r-x, files need at least r--. AppleDouble
+          # entries carry extended attributes and are not installed as files.
+          unreadable="$(lsbom -p mF "$expanded/Bom" | grep -v '/\._' | awk '
+            { type = substr($1, 1, 1); other = substr($1, length($1), 1) }
+            type == "4" && other != "5" { print }
+            type != "4" && other != "4" && other != "5" { print }
+          ')"
+          if [ -n "$unreadable" ]; then
+            echo "payload entries an ordinary user cannot reach:"
+            echo "$unreadable"
+            exit 1
+          fi
+          # Both host manifests name the executable inside /Applications by absolute
+          # path, so an install that follows a copy the user moved leaves the browsers
+          # unable to spawn it. The bundle must not appear in the relocate list, which
+          # an empty element is what says. The pkg-info `relocatable` attribute is a
+          # different thing and is "false" either way, so it proves nothing here.
+          if ! grep -q '<relocate/>' "$expanded/PackageInfo"; then
+            echo "the app is still in the relocate list, so an install can follow a moved copy:"
+            grep -A 3 '<relocate' "$expanded/PackageInfo"
+            exit 1
+          fi
+
+  extension:
+    runs-on: macos-26
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          # The job's working-directory does not reach action steps, so the
+          # action needs the path to the packageManager field explicitly.
+          package_json_file: extension/package.json
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: extension/pnpm-lock.yaml
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Format check
+        run: pnpm exec prettier --check .
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build both bundles
+        run: node build.mjs --version 0.0.0

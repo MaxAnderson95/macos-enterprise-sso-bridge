@@ -1,0 +1,8 @@
+.build/
+dist/
+node_modules/
+*.app
+*.pkg
+*.crx
+*.xpi
+.DS_Store

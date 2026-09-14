@@ -1,0 +1,21 @@
+{
+  "name": "enterprise-sso-bridge-extension",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "0.2.9",
+    "@types/node": "24.9.2",
+    "esbuild": "0.28.2",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

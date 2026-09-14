@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "url": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/saml2",
+  "method": "POST",
+  "fields": [
+    [
+      "SAMLRequest",
+      "fZJNb9swDIb/iqG7Ln9tYzhOkKUYFqDbgibbYZeCkelEgC15ktyu/36y0245bJdd"
+    ],
+    [
+      "RelayState",
+      "https://app.example.com/sso/start"
+    ],
+    [
+      "RelayState",
+      "second-value-under-the-same-name"
+    ]
+  ]
+}

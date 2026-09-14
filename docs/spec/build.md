@@ -72,6 +72,12 @@ Both on `macos-26`, currently `macos-latest` and GA on arm64, which satisfies th
 
 `release.yaml`, on `v*` tags: the same build with the tag's version, producing the `.pkg`, the `.crx` packed with the private key from an Actions secret, the `.xpi`, and `install-chromium-extension.sh`, attached to a GitHub release. Tagging therefore exercises nothing CI has not already done except the signing key.
 
-## Open at implementation time
+## Packing the .crx
 
-How the `.crx` is packed. The two candidates are a Chromium binary's `--pack-extension` on the runner, which depends on what the macOS image ships and is fragile if that changes, and a Node CRX3 packer using `node:crypto`, which is self-contained but is another dependency to approve. Decide it against the runner image that exists then rather than asserting one now.
+`tools/pack-crx.mjs`, about sixty lines of `node:crypto` and hand-written protobuf, chosen over the runner's Chromium binary. It adds no dependency: CRX3's two messages use only length-delimited fields, and the signature is RSA PKCS#1 v1.5 over SHA-256, which `node:crypto` signs directly.
+
+`--pack-extension` was a live option rather than a straw man. The `macos-26` image does ship Google Chrome, installed by `images/macos/scripts/build/install-chrome.sh` and listed in `macos-26-arm64-Readme.md` at 152.0.7977.83, and the same version on this Mac packed the built bundle successfully. What that costs is a full browser launch in CI with its own user-data directory, an output path fixed to the input directory's name, and an artifact whose format is whatever the image's Chrome happens to be that week. The packer is the same code locally and on the runner, and it fails loudly when the signing key does not derive the ID that `manifest.chromium.json` pins.
+
+The format is Chromium's, read from `components/crx_file/crx3.proto` and `crx_verifier.cc` rather than from a description of it: `[Cr24][3][header length][CrxFileHeader][zip]`, with every signature covering `"CRX3 SignedData\0"` plus the little-endian length of `signed_header_data` plus `signed_header_data` plus the zip. Chrome's own output was decoded to confirm the field numbers, the PKCS#1 padding rather than the PSS the proto comment mentions, and the 16-byte `crx_id`. A package from `pack-crx.mjs` and one from Chrome for the same bundle and key produce the same header size and the same `crx_id`, and Helium installed the packed one from an external-preferences file into an isolated profile with `location=2` and `disable_reasons=[8192]`, the acknowledgement state `install.md` describes.
+
+The private key lives outside the repository and reaches the release workflow as the `CHROMIUM_EXTENSION_KEY` Actions secret, written to a mode-0600 temporary file for the length of one step.

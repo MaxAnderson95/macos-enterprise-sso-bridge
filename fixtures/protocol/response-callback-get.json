@@ -1,0 +1,5 @@
+{
+  "result": "callback",
+  "url": "https://app.example.com/sso/callback?code=0.AXkAo1&state=abc123",
+  "method": "GET"
+}

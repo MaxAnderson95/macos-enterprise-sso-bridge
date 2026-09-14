@@ -1,0 +1,15 @@
+{
+  "result": "callback",
+  "url": "https://app.example.com/sso/acs",
+  "method": "POST",
+  "fields": [
+    [
+      "SAMLResponse",
+      "PHNhbWxwOlJlc3BvbnNlIHhtbG5zOnNhbWxwPSJ1cm46b2FzaXM6"
+    ],
+    [
+      "RelayState",
+      "https://app.example.com/sso/start"
+    ]
+  ]
+}

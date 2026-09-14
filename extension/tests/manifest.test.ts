@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import { renderManifest } from "../build.mjs";
+import { entryOriginMatchPatterns } from "../src/generated/entryOrigins";
+import { deriveChromiumExtensionId } from "../../tools/extension-ids.mjs";
+
+// Both native-messaging manifests name the derived Chromium ID, so a change to the
+// committed `key` is a breaking change and this literal is the tripwire for one.
+const chromiumExtensionId = "ddalcfdgiklpbglknegedadiaclfkncc";
+
+describe.each(["chromium", "gecko"])("the %s manifest", (engine) => {
+  const manifest = renderManifest(engine, "1.2.3");
+
+  it("takes the version from the build argument", () => {
+    expect(manifest.version).toBe("1.2.3");
+  });
+
+  it("asks for exactly the permissions the spec allows", () => {
+    expect(manifest.permissions).toEqual(["webRequest", "storage", "nativeMessaging", "activeTab"]);
+  });
+
+  // The manifest reads the data file and this reads the generated constant, so the
+  // pair fails if either half of the generation drifts from the source of truth.
+  it("takes host_permissions from the entry-origin data file", () => {
+    expect(manifest.host_permissions).toEqual(entryOriginMatchPatterns);
+  });
+
+  it("keeps form-action in the extension-pages CSP for the Relay page", () => {
+    expect(manifest.content_security_policy.extension_pages).toContain("form-action https:");
+  });
+
+  it("gives the action an icon and no popup, so onClicked fires", () => {
+    expect(manifest.action.default_icon["16"]).toBe("icons/icon-16.png");
+    expect(manifest.action).not.toHaveProperty("default_popup");
+  });
+
+  it("rejects a version that is not dotted numeric", () => {
+    expect(() => renderManifest(engine, "v1.2.3")).toThrow(/dotted numeric/);
+  });
+});
+
+describe("the engine-specific keys", () => {
+  const chromium = renderManifest("chromium", "0.0.0");
+  const gecko = renderManifest("gecko", "0.0.0");
+
+  it("pins the Chromium extension ID through the committed key", () => {
+    expect(deriveChromiumExtensionId(chromium.key)).toBe(chromiumExtensionId);
+  });
+
+  it("splits incognito in Chromium and leaves Gecko on the default", () => {
+    expect(chromium.incognito).toBe("split");
+    expect(gecko).not.toHaveProperty("incognito");
+  });
+
+  it("pins the Gecko add-on ID, which the native manifest names", () => {
+    expect(gecko.browser_specific_settings.gecko.id).toBe("enterprise-sso-bridge@maxanderson.tech");
+    expect(gecko.browser_specific_settings.gecko.strict_min_version).toBe("115.0");
+    expect(chromium).not.toHaveProperty("browser_specific_settings");
+  });
+
+  it("uses a service worker in Chromium and a background script in Gecko", () => {
+    expect(chromium.background).toEqual({ service_worker: "background.js" });
+    expect(gecko.background).toEqual({ scripts: ["background.js"] });
+  });
+});

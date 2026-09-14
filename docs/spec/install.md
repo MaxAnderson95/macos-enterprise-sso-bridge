@@ -33,6 +33,8 @@ Helium's system-wide Chromium path is the unbranded literal `/Library/Applicatio
 
 The script exists because that JSON requires an absolute path and JSON has no variable expansion, so a committed file would otherwise hardcode one machine's home directory. It is idempotent, and it is the update path as well as the install path.
 
+A user-level native-messaging registration takes precedence over the system-wide release registration. The script removes Helium's user-level manifest only when its name and development-build description match the Bridge, its target is an absolute path that no longer exists, and neither the manifest nor the target is a symlink. Other user-level registrations remain in place with a warning.
+
 Helium performs the install at next launch and the user accepts it once. That click is unavoidable: `prompt_for_external_extensions` defaults enabled on macOS, and `ExtensionRegistrar` returns `DISABLE_EXTERNAL_EXTENSION` for any external install that has not been acknowledged. The acceptance UI is `MENU_ALERT`, a three-dot menu item rather than a bubble (`external_install_manager.cc:111-120`).
 
 This was verified empirically against an isolated user-data-dir: a locally packed CRX referenced by an external-prefs JSON installed and unpacked into the profile with `location=2` (`EXTERNAL_PREF`) and `disable_reasons=[8192]`, which is `1 << 13`, `DISABLE_EXTERNAL_EXTENSION` (`extensions/browser/disable_reason.h:42`). That contradicts Google's documentation, which says local-CRX external installs were blocked on macOS in Chrome 44. No such enforcement exists in trunk; the modern equivalent is `InstallVerifier`, which is gated on `GOOGLE_CHROME_BRANDING` and therefore compiled out of Helium (`install_verifier.cc:68-75`).

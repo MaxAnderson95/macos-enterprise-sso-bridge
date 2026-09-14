@@ -50,6 +50,8 @@ chmod +x install-chromium-extension.sh
 
 It needs no root. It copies the package into `~/Library/Application Support/tech.maxanderson.enterprise-sso-bridge/` and points Helium at it from `~/Library/Application Support/net.imput.helium/External Extensions/`.
 
+The script also removes a user-level Bridge development registration when its target no longer exists, so it cannot hide the installed release. It preserves other user-level registrations and warns that they may override the release.
+
 Restart Helium. It offers the extension once, as an item in the three-dot menu rather than a popup, and you accept it there. Helium disables any externally installed extension until you do, so the toolbar action will not appear before that click.
 
 ### 3. The Zen extension

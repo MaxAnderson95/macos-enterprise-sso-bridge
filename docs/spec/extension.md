@@ -32,6 +32,8 @@ On click:
 4. `connectNative` and send the request frame.
 5. On the terminal response, re-validate any returned URL (HTTPS, no embedded credentials), then navigate.
 
+Handoff claims live in `storage.session`. The background instance also tracks the claims it acquired, which never expire while that instance is waiting for the Bridge. After a background restart, a click may replace an inherited claim once its `startedAt` is more than thirty minutes old. This gives an abandoned claim a recovery path while allowing time for MFA or a password change before an inherited claim is replaced. It does not time out the native-messaging exchange or extend the capture's ten-minute lifetime: an expired capture still sends the user back to the Application's login page. Finishing a Handoff or closing its tab releases the claim; navigation only clears the action state.
+
 The capture's `storage.session` key is deleted only on a terminal success. On any failure it survives, so the popup's Try again button replays the same Sign-in request without sending the user back through the Application's login page. That is deliberately the opposite of the Relay page's consume-once rule: replaying a Sign-in request starts a fresh authentication, while resubmitting an assertion is a replay of a credential.
 
 The spike's path heuristic, which guessed from a `/saml2` path that the capture had been missed, is not carried forward. That judgment belongs to the adapter and arrives as `unsupported_request`.

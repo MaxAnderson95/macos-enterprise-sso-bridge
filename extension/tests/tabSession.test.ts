@@ -105,6 +105,32 @@ describe("tabSession", () => {
     expect(claims).toEqual([true, false]);
   });
 
+  it("recovers an inherited claim after thirty minutes, once even for overlapping clicks", async () => {
+    const { area } = slowSessionArea();
+    await tabSession(area).claimHandoff(7, now);
+    const afterEviction = tabSession(area);
+    const thirtyMinutesLater = now + 30 * 60 * 1000;
+
+    await expect(afterEviction.claimHandoff(7, thirtyMinutesLater)).resolves.toBe(false);
+    await afterEviction.recordCapture(7, request, thirtyMinutesLater);
+    const claims = await Promise.all([
+      afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
+      afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
+    ]);
+    expect(claims).toEqual([true, false]);
+    await expect(afterEviction.readCapture(7, thirtyMinutesLater + 1)).resolves.toEqual(request);
+  });
+
+  it("never expires a claim still active in the same background instance", async () => {
+    const { area } = fakeSessionArea();
+    const session = tabSession(area);
+    await session.claimHandoff(7, now);
+
+    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000)).resolves.toBe(false);
+    await session.finishHandoff(7, "failure");
+    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000)).resolves.toBe(true);
+  });
+
   it("drops the capture, the claim, the callback, and the state when the tab closes", async () => {
     const { area, items } = fakeSessionArea();
     const session = tabSession(area);

@@ -9,6 +9,26 @@ permissions:
   contents: read
 
 jobs:
+  # Owns a check that belongs to neither half: the generated constants guard the Bridge
+  # and the Extension at once, and a stale one fails here rather than inside a toolchain
+  # job that would report the wrong half.
+  generated:
+    runs-on: macos-26
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Regenerate the entry-origin constants
+        run: node tools/generate.mjs
+
+      - name: Fail on a hand-edited or stale generated file
+        run: git diff --exit-code
+
   bridge:
     runs-on: macos-26
     steps:

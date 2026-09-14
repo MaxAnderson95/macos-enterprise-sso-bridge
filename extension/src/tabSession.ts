@@ -5,6 +5,7 @@
 // a module-level variable. `storage.session` is memory-only in both engines and dies
 // with the browser, which is the lifetime this state wants anyway.
 
+import { engineApi } from "./engineApi";
 import type { FormField, SignInRequest } from "./protocol";
 
 /** An attempt abandoned an hour ago must never replay, so a stale capture is ignored. */
@@ -53,6 +54,15 @@ export interface TabSession {
    * this is the opposite of the capture's survive-on-failure rule.
    */
   takeCallback(tabId: number): Promise<PostCallback | null>;
+  /**
+   * Remembers which state the action is showing for a tab, so the popup, which is a
+   * separate document, knows which sentence it was opened to say.
+   */
+  recordState(tabId: number, state: string): Promise<void>;
+  /** The state name recorded for a tab, or null when the tab is idle. */
+  readState(tabId: number): Promise<string | null>;
+  /** Forgets the recorded state, leaving the tab idle. */
+  clearState(tabId: number): Promise<void>;
   /** Drops everything held for a tab, for when it closes. */
   forgetTab(tabId: number): Promise<void>;
 }
@@ -65,6 +75,7 @@ interface StoredCapture {
 const captureKey = (tabId: number) => `capture:${tabId}`;
 const handoffKey = (tabId: number) => `handoff:${tabId}`;
 const callbackKey = (tabId: number) => `callback:${tabId}`;
+const stateKey = (tabId: number) => `state:${tabId}`;
 
 function storedCapture(value: unknown): StoredCapture | null {
   if (typeof value !== "object" || value === null) {
@@ -88,14 +99,8 @@ function storedCallback(value: unknown): PostCallback | null {
   return { url, fields };
 }
 
-/**
- * Gecko's promise-returning namespace is `browser`; Chromium defines only `chrome`,
- * whose MV3 storage methods return promises. Preferring `browser` means both engines
- * hand back a promise, rather than relying on Gecko's callback-shaped `chrome` alias.
- */
 function sessionStorage(): SessionArea {
-  const api = (globalThis as { browser?: typeof chrome }).browser ?? chrome;
-  const area = api.storage.session;
+  const area = engineApi().storage.session;
   return {
     get: (keys) => area.get(keys),
     set: (items) => area.set(items),
@@ -181,9 +186,28 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
       return stored;
     },
 
+    async recordState(tabId, state) {
+      await area.set({ [stateKey(tabId)]: state });
+    },
+
+    async readState(tabId) {
+      const key = stateKey(tabId);
+      const stored = (await area.get([key]))[key];
+      return typeof stored === "string" ? stored : null;
+    },
+
+    async clearState(tabId) {
+      await area.remove([stateKey(tabId)]);
+    },
+
     forgetTab(tabId) {
       return serialized(tabId, async () => {
-        await area.remove([handoffKey(tabId), captureKey(tabId), callbackKey(tabId)]);
+        await area.remove([
+          handoffKey(tabId),
+          captureKey(tabId),
+          callbackKey(tabId),
+          stateKey(tabId),
+        ]);
       });
     },
   };

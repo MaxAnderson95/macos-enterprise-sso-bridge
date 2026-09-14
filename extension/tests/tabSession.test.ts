@@ -2,37 +2,13 @@ import { describe, expect, it } from "vitest";
 import { captureMaxAgeMs, tabSession } from "../src/tabSession";
 import type { PostCallback, SessionArea } from "../src/tabSession";
 import type { SignInRequest } from "../src/protocol";
+import { fakeSessionArea } from "./helpers/fakeSessionArea";
 
 const request: SignInRequest = {
   url: "https://login.microsoftonline.com/common/saml2",
   method: "POST",
   fields: [["SAMLRequest", "fZJNb9sw"]],
 };
-
-/**
- * A `storage.session` stand-in that outlives the module reading it, which is the point:
- * the browser's area belongs to the browser context, not to the service worker, so a
- * test that builds a second `tabSession` over the same area is asking the same question
- * an eviction asks.
- */
-function fakeSessionArea() {
-  const items = new Map<string, unknown>();
-  const area: SessionArea = {
-    get: async (keys) =>
-      Object.fromEntries(keys.filter((key) => items.has(key)).map((key) => [key, items.get(key)])),
-    set: async (entries) => {
-      for (const [key, value] of Object.entries(entries)) {
-        items.set(key, value);
-      }
-    },
-    remove: async (keys) => {
-      for (const key of keys) {
-        items.delete(key);
-      }
-    },
-  };
-  return { area, items };
-}
 
 /**
  * The same stand-in, with a real delay inside every read. The browser's storage area
@@ -129,16 +105,30 @@ describe("tabSession", () => {
     expect(claims).toEqual([true, false]);
   });
 
-  it("drops the capture, the claim, and the callback when the tab closes", async () => {
+  it("drops the capture, the claim, the callback, and the state when the tab closes", async () => {
     const { area, items } = fakeSessionArea();
     const session = tabSession(area);
 
     await session.recordCapture(7, request, now);
     await session.claimHandoff(7, now);
     await session.storeCallback(7, callback);
+    await session.recordState(7, "noReply");
     await session.forgetTab(7);
 
     expect([...items.keys()]).toEqual([]);
+  });
+
+  // The popup is a separate document, so the state it was opened to explain has to
+  // survive the click that opens it, and an eviction in between.
+  it("keeps the state for a tab until it is cleared", async () => {
+    const { area } = fakeSessionArea();
+
+    await tabSession(area).recordState(7, "noReply");
+    await expect(tabSession(area).readState(7)).resolves.toBe("noReply");
+    await expect(tabSession(area).readState(8)).resolves.toBeNull();
+
+    await tabSession(area).clearState(7);
+    await expect(tabSession(area).readState(7)).resolves.toBeNull();
   });
 
   // Chromium can evict the service worker between the navigation and the click, and

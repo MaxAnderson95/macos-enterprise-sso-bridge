@@ -3,17 +3,24 @@
 // submission, so it says one line and does not style it; a flash of styled content is
 // worse than a flash of text.
 
+import { actionState, stateCopy } from "./actionState";
+import { engineApi } from "./engineApi";
 import { tabSession } from "./tabSession";
 import type { PostCallback } from "./tabSession";
 
-const unavailable =
-  "This sign-in has already been completed or has expired. " +
-  "Start again from the application's login page.";
+// The page says its own line, and the toolbar action says the same thing, because a
+// tab that has moved on from the Relay page would otherwise carry no trace of a
+// sign-in that never completed. Nothing else spoke for this one: the Bridge finished
+// successfully and handed the Callback back.
+let currentTabId: number | undefined;
 
 function showUnavailable() {
   const message = document.getElementById("message");
   if (message !== null) {
-    message.textContent = unavailable;
+    message.textContent = stateCopy.alreadyCompleted.popup;
+  }
+  if (currentTabId !== undefined) {
+    void actionState().show(currentTabId, "alreadyCompleted");
   }
 }
 
@@ -50,10 +57,10 @@ function submit(callback: PostCallback) {
 document.addEventListener("securitypolicyviolation", showUnavailable);
 
 async function run() {
-  const api = (globalThis as { browser?: typeof chrome }).browser ?? chrome;
   // The tab is the key, and a page cannot be told which tab it is in by its URL without
   // trusting the URL. Reading it needs no permission beyond what the Extension has.
-  const tabId = (await api.tabs.getCurrent())?.id;
+  const tabId = (await engineApi().tabs.getCurrent())?.id;
+  currentTabId = tabId;
   const callback = tabId === undefined ? null : await tabSession().takeCallback(tabId);
   if (callback === null) {
     showUnavailable();

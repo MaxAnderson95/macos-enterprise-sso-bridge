@@ -15,8 +15,8 @@ export const engines = ["chromium", "gecko"];
 
 const iconSizes = [16, 32, 48, 128];
 const pages = ["popup.html", "relay.html"];
-// The background worker, and the Relay page's script, which relay.html loads by name.
-const bundles = ["background.ts", "relay.ts"];
+// The background worker, and the two page scripts, which their pages load by name.
+const bundles = ["background.ts", "relay.ts", "popup.ts"];
 
 /**
  * The committed manifest for one engine with the release version and the entry

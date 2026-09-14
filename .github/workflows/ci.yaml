@@ -65,8 +65,12 @@ jobs:
         with:
           node-version: 22
 
+      # Built under a restrictive umask on purpose. The payload's modes used to come
+      # from whoever ran the build, and --ownership recommended hands the result to
+      # root, so a 077 builder produced a root-owned 0700 app the browser could not
+      # traverse. Building this way here means the modes are the script's doing.
       - name: Build the app and the installer package
-        run: packaging/build-pkg.sh --version 0.0.0
+        run: umask 077 && packaging/build-pkg.sh --version 0.0.0
 
       # The three payload paths are a contract with both browser engines, so a
       # package that grew or lost one fails here.
@@ -86,6 +90,31 @@ jobs:
           if [ "$others" != "2" ]; then
             echo "the package installs $others files outside the app, expected 2"
             (cd "$payload" && find . -type f -not -path './Applications/*')
+            exit 1
+          fi
+          # The archive's own modes, not the checkout's. Everything installs as root, so
+          # a directory the user cannot traverse or a file it cannot read stops the
+          # browser launching the Bridge. The octal mode's last digit is the "other"
+          # permission: directories need r-x, files need at least r--. AppleDouble
+          # entries carry extended attributes and are not installed as files.
+          unreadable="$(lsbom -p mF "$expanded/Bom" | grep -v '/\._' | awk '
+            { type = substr($1, 1, 1); other = substr($1, length($1), 1) }
+            type == "4" && other != "5" { print }
+            type != "4" && other != "4" && other != "5" { print }
+          ')"
+          if [ -n "$unreadable" ]; then
+            echo "payload entries an ordinary user cannot reach:"
+            echo "$unreadable"
+            exit 1
+          fi
+          # Both host manifests name the executable inside /Applications by absolute
+          # path, so an install that follows a copy the user moved leaves the browsers
+          # unable to spawn it. The bundle must not appear in the relocate list, which
+          # an empty element is what says. The pkg-info `relocatable` attribute is a
+          # different thing and is "false" either way, so it proves nothing here.
+          if ! grep -q '<relocate/>' "$expanded/PackageInfo"; then
+            echo "the app is still in the relocate list, so an install can follow a moved copy:"
+            grep -A 3 '<relocate' "$expanded/PackageInfo"
             exit 1
           fi
 

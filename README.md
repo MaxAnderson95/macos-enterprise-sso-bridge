@@ -96,7 +96,7 @@ Remove the extensions first, so restoring Zen's signature pref does not fight a 
 3. Delete the files:
 
 ```sh
-rm -rf "/Applications/Enterprise SSO Bridge.app"
+sudo rm -rf "/Applications/Enterprise SSO Bridge.app"
 rm -rf "$HOME/Library/Application Support/tech.maxanderson.enterprise-sso-bridge"
 rm -f "$HOME/Library/Application Support/net.imput.helium/External Extensions/ddalcfdgiklpbglknegedadiaclfkncc.json"
 sudo rm -f "/Library/Application Support/Chromium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"

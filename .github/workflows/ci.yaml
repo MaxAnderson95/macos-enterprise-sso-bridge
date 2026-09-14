@@ -58,8 +58,36 @@ jobs:
       - name: Test
         run: swift test --package-path bridge
 
-      - name: Build the app
-        run: packaging/build-app.sh --version 0.0.0
+      # Packaging runs on every commit so a break surfaces here rather than when
+      # someone is trying to cut a release. build-pkg.sh builds the app first.
+      - name: Set up Node for the host manifests
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Build the app and the installer package
+        run: packaging/build-pkg.sh --version 0.0.0
+
+      # The three payload paths are a contract with both browser engines, so a
+      # package that grew or lost one fails here.
+      - name: Check the package payload
+        run: |
+          expanded="$(mktemp -d)/pkg"
+          pkgutil --expand-full dist/EnterpriseSSOBridge-0.0.0.pkg "$expanded"
+          if [ -e "$expanded/Scripts" ]; then
+            echo "the package carries install scripts, which it must not"
+            exit 1
+          fi
+          payload="$expanded/Payload"
+          test -x "$payload/Applications/Enterprise SSO Bridge.app/Contents/MacOS/enterprise-sso-bridge"
+          test -f "$payload/Library/Application Support/Chromium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
+          test -f "$payload/Library/Application Support/Mozilla/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
+          others="$(cd "$payload" && find . -type f -not -path './Applications/*' | wc -l | tr -d ' ')"
+          if [ "$others" != "2" ]; then
+            echo "the package installs $others files outside the app, expected 2"
+            (cd "$payload" && find . -type f -not -path './Applications/*')
+            exit 1
+          fi
 
   extension:
     runs-on: macos-26

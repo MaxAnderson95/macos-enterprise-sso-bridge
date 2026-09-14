@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Enterprise SSO Bridge",
+  "description": "Finishes a corporate sign-in through the Mac's native Enterprise SSO path and returns you to the application.",
+  "version": "0.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzVWt7/4OJTGYSJpQo4onADsE0iPPcbIyh3NnlmxIAiZaGMGZiwM8tQPgKRBMLuJqi+8bmI6rSLMF65t1QWMZ6UKXEX/woKbIWBE8ykyx8ewz5asTxwbfIbXXMSFhNpoWOP6K33a56NgTFFi5QasK9FMDkCkn3pXFf9DW63GE5MYFlnCukM8llWAcVVIM/VsGFJ0RnwUFRLRBVtHekfVbmIWttUtPEB9dYMP8gVSYFU44Y7RX5gLZmVMI1Da+Pl8QbIHcVdioXyal89C40KATfDOhk6PlkTPqDNQa7tZhFCoNgJtV0Ih9RM48JzIn9G9esRgyl1bSeI2y7iJ6rqg5kQIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Sign in with Enterprise SSO Bridge",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": ["webRequest", "storage", "nativeMessaging", "activeTab"],
+  "host_permissions": ["https://login.microsoftonline.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; form-action https:"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "incognito": "split"
+}

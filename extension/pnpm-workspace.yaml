@@ -1,0 +1,4 @@
+# esbuild's postinstall only re-checks the platform binary that its optional
+# dependency already installed, and the build runs without it.
+allowBuilds:
+  esbuild: false

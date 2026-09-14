@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Enterprise SSO Bridge",
+  "description": "Finishes a corporate sign-in through the Mac's native Enterprise SSO path and returns you to the application.",
+  "version": "0.0.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "enterprise-sso-bridge@maxanderson.tech",
+      "strict_min_version": "115.0"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Sign in with Enterprise SSO Bridge",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "permissions": ["webRequest", "storage", "nativeMessaging", "activeTab"],
+  "host_permissions": ["https://login.microsoftonline.com/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; form-action https:"
+  },
+  "background": {
+    "scripts": ["background.js"]
+  }
+}

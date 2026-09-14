@@ -25,11 +25,12 @@ public struct CandidateNavigation: Equatable, Sendable {
 
 /// The checks the Bridge core makes before it asks an adapter anything.
 ///
-/// A candidate Callback targets HTTPS, carries no embedded credentials, and is not
-/// still at the identity provider. These are provider-independent, so they stay here
-/// rather than being restated inside every adapter's `recognizes`. The two checks that
-/// need WebKit, main-frame only and urlencoded-body extraction, belong to the
-/// navigation delegate; by the time a `CandidateNavigation` exists they have been made.
+/// A candidate Callback targets HTTPS, carries no embedded credentials, is not still at
+/// the identity provider, and, when it is a POST, arrived with a urlencoded body the
+/// core could read. These are provider-independent, so they stay here rather than being
+/// restated inside every adapter's `recognizes`. The one check that needs WebKit,
+/// main-frame only, belongs to the navigation delegate; so does running the extraction
+/// whose result the POST rule below reads.
 ///
 /// A navigation this refuses is allowed to proceed. The Bridge captures Callbacks; it
 /// is not a security proxy for the provider's redirect chain.
@@ -42,6 +43,7 @@ public enum CallbackEligibility {
     case notEncrypted = "not https"
     case embeddedCredentials = "embedded credentials"
     case stillAtTheProvider = "still at the identity provider"
+    case noURLEncodedBody = "post body is not urlencoded"
   }
 
   public static func refusal(
@@ -53,7 +55,15 @@ public enum CallbackEligibility {
       return .embeddedCredentials
     }
     guard let host = candidate.url.host()?.lowercased() else { return .notEncrypted }
-    return host == identityProviderHost.lowercased() ? .stillAtTheProvider : nil
+    guard host != identityProviderHost.lowercased() else { return .stillAtTheProvider }
+    // The positive rule from docs/spec/callback-recognition.md, enforced where the
+    // extraction's result is a value: a POST arrives with fields only when the core
+    // read a urlencoded body, so an empty one is a multipart or JSON POST, or a
+    // submission whose fields could not be found at all. Neither is handed over, and
+    // the alternative is worse than letting it proceed: the `redirect_uri` rule alone
+    // would answer for it and the Application would receive a form carrying nothing.
+    guard candidate.method == .get || !candidate.fields.isEmpty else { return .noURLEncodedBody }
+    return nil
   }
 
   public static func permits(

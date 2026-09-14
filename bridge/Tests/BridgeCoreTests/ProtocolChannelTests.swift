@@ -72,6 +72,28 @@ struct ProtocolChannelTests {
     #expect(written == WireHarness.framed(Data(#"{"result":"declined"}"#.utf8)))
   }
 
+  /// The caller has to be able to tell a delivered Callback from a substituted error,
+  /// because `callback_too_large`'s copy says the Bridge has the details and the Bridge
+  /// only knows to show them if it reads back what actually went.
+  @Test("Send reports the response that actually went")
+  func sendReportsTheSubstitution() throws {
+    let harness = WireHarness()
+    let assertion = String(repeating: "A", count: ResponseEncoder.budget)
+    let callback = BridgeResponse.callback(
+      .post(
+        url: URL(string: "https://app.example.com/sso/acs")!,
+        fields: [FormField(name: "SAMLResponse", value: assertion)]
+      )
+    )
+
+    guard case .error(.callbackTooLarge, _) = try harness.channel.send(callback) else {
+      Issue.record("expected the Callback to be substituted")
+      return
+    }
+    // The second call wrote nothing, which is not the same as having sent nothing new.
+    #expect(try harness.channel.send(.declined) == nil)
+  }
+
   @Test("Broken framing leaves stdout empty")
   func brokenFramingWritesNothing() throws {
     let harness = WireHarness()

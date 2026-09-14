@@ -61,18 +61,22 @@ public final class ProtocolChannel {
     return .request(message.signInRequest)
   }
 
-  /// Writes the terminal response. The second and later calls write nothing, so a
-  /// Handoff with several termination paths cannot put two frames on the wire.
-  public func send(_ response: BridgeResponse) throws {
+  /// Writes the terminal response and returns the response that actually went, which is
+  /// `callback_too_large` when the Callback did not fit the cap. Nil means nothing was
+  /// written: the second and later calls write nothing, so a Handoff with several
+  /// termination paths cannot put two frames on the wire.
+  @discardableResult
+  public func send(_ response: BridgeResponse) throws -> BridgeResponse? {
     guard !didRespond else {
       BridgeLog.wire.error(
         "suppressed a second terminal response: \(response.logSummary, privacy: .public)"
       )
-      return
+      return nil
     }
     didRespond = true
     let (sent, payload) = try ResponseEncoder.encode(response)
     try frames.writeFrame(payload)
     BridgeLog.wire.info("sent \(sent.logSummary, privacy: .public)")
+    return sent
   }
 }

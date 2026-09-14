@@ -256,6 +256,27 @@ struct CallbackEligibilityTests {
     #expect(refusal("https://login.microsoftonline.com/common/reprocess") == .stillAtTheProvider)
     #expect(refusal("https://app.example.com/signin-oidc") == nil)
   }
+
+  /// The urlencoded-only rule, stated positively: a POST carries fields only when the
+  /// core read a urlencoded body, so a POST with none is a multipart or JSON one and is
+  /// not a candidate at all, wherever it is going.
+  @Test("A POST with no extracted fields is not a candidate")
+  func postWithoutAURLEncodedBody() {
+    func refusal(_ method: HTTPMethod, fields: [(String, String)]) -> CallbackEligibility.Refusal? {
+      CallbackEligibility.refusal(
+        CandidateNavigation(
+          url: URL(string: "https://app.example.com/signin-oidc")!,
+          method: method,
+          fields: fields.map(FormField.init(name:value:))
+        ),
+        identityProviderHost: Self.providerHost
+      )
+    }
+    #expect(refusal(.post, fields: []) == .noURLEncodedBody)
+    #expect(refusal(.post, fields: [("SAMLResponse", "PHNhbWxw")]) == nil)
+    // A GET has no body to read, so the rule has nothing to say about it.
+    #expect(refusal(.get, fields: []) == nil)
+  }
 }
 
 /// The two halves put together, which is what the navigation delegate actually asks:
@@ -319,5 +340,13 @@ struct CallbackCaptureTests {
   @Test("An ordinary navigation the adapter does not recognize proceeds")
   func unrecognized() {
     #expect(verdict("https://app.example.com/other") == .proceed)
+  }
+
+  /// The one case the `redirect_uri` rule would otherwise answer on its own: a POST
+  /// landing exactly where the OIDC response was expected, with a body the core could
+  /// not read. Capturing it would hand the Application a form carrying no assertion.
+  @Test("A POST at the redirect_uri whose body was not urlencoded proceeds")
+  func fieldlessPOSTAtTheRedirectURI() {
+    #expect(verdict("https://app.example.com/signin-oidc", method: .post) == .proceed)
   }
 }

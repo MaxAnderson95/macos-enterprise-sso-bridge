@@ -60,17 +60,27 @@ final class HandoffAppDelegate: NSObject, NSApplicationDelegate {
 
   private func finish(_ outcome: HandoffWebView.Outcome) {
     switch outcome {
-    case .captured(.get(let url)):
-      controller?.showReturningCallback()
-      terminate(with: .callback(.get(url: url)))
-    case .captured(.post):
-      // Recognizing a POST Callback is only half done without its body, which is issue
-      // #26. Answering `internal` says so; answering with a fieldless POST Callback
-      // would hand the browser a form submission carrying no assertion.
-      fail(with: .error(.internalFailure, detail: "post callback body extraction"))
+    case .captured(let callback):
+      deliver(callback)
     case .failed(let detail):
       fail(with: .error(.navigationFailed, detail: detail))
     }
+  }
+
+  /// The Callback going back whole: a GET as a URL, a POST with its fields, which the
+  /// Extension's Relay page submits from the original tab.
+  ///
+  /// An assertion too fat for the 1 MiB native-messaging cap becomes
+  /// `callback_too_large` inside the channel, and that code's copy says the Bridge has
+  /// the details, so the window is what has to show them. Reading back what was sent
+  /// rather than what was asked for is the only way this knows which happened.
+  private func deliver(_ callback: Callback) {
+    guard case .callback = answer(with: .callback(callback)) else {
+      controller?.showFailure()
+      return
+    }
+    controller?.showReturningCallback()
+    exit(0)
   }
 
   /// The Extension is told immediately, and the window stays up saying what happened,
@@ -88,10 +98,11 @@ final class HandoffAppDelegate: NSObject, NSApplicationDelegate {
     terminate(with: handoff.decline())
   }
 
-  private func answer(with response: BridgeResponse) {
+  @discardableResult
+  private func answer(with response: BridgeResponse) -> BridgeResponse {
     answered = true
     do {
-      try channel.send(response)
+      return try channel.send(response) ?? response
     } catch {
       BridgeLog.wire.error("could not write the terminal response: \(error, privacy: .public)")
       exit(1)

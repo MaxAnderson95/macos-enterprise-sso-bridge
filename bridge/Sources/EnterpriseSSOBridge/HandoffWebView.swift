@@ -81,9 +81,57 @@ final class HandoffWebView: NSObject, WKNavigationDelegate {
       return
     }
 
-    // Extracting a POST body is issue #26, so a POST candidate reaches the adapter with
-    // no fields, exactly as a multipart one always will.
-    let candidate = CandidateNavigation(url: url, method: method)
+    guard method == .post else {
+      decide(CandidateNavigation(url: url, method: method), decisionHandler)
+      return
+    }
+    // A POST is decided on its fields, so the extraction has to finish before the
+    // verdict. Deferring the decision is what lets path 2 read the submitting form:
+    // until this handler answers, the document in the webview is still the one whose
+    // form is being submitted.
+    Task {
+      let fields = await self.extractFields(from: navigationAction, target: url, in: webView)
+      self.decide(CandidateNavigation(url: url, method: method, fields: fields), decisionHandler)
+    }
+  }
+
+  /// The two paths from docs/spec/callback-recognition.md, in order, and the one line
+  /// that says which of them answered. That line is what the first end-to-end run
+  /// against a real tenant reads to decide which path to delete, so it names the path
+  /// and the number of fields and never a name or a value.
+  private func extractFields(
+    from navigationAction: WKNavigationAction,
+    target: URL,
+    in webView: WKWebView
+  ) async -> [FormField] {
+    let request = navigationAction.request
+    if let extraction = CallbackBody.fromHTTPBody(
+      request.httpBody, contentType: request.value(forHTTPHeaderField: "Content-Type"))
+    {
+      BridgeLog.navigation.info(
+        "callback body source: \(extraction.logSummary, privacy: .public)")
+      return extraction.fields
+    }
+
+    let script = CallbackBody.matchingFormScript(action: target)
+    let answer = try? await webView.evaluateJavaScript(script)
+    guard let extraction = CallbackBody.fromDOMForm(answer as? String) else {
+      BridgeLog.navigation.info(
+        "callback body source: none, no urlencoded httpBody and no matching DOM form")
+      return []
+    }
+    BridgeLog.navigation.info("callback body source: \(extraction.logSummary, privacy: .public)")
+    return extraction.fields
+  }
+
+  private func decide(
+    _ candidate: CandidateNavigation,
+    _ decisionHandler: @MainActor @Sendable (WKNavigationActionPolicy) -> Void
+  ) {
+    guard !finished else {
+      decisionHandler(.allow)
+      return
+    }
     switch CallbackCapture.verdict(
       for: candidate, plan: plan, identityProviderHost: identityProviderHost)
     {

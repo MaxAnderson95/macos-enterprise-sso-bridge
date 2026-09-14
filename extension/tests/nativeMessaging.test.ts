@@ -45,7 +45,7 @@ describe("requestHandoff", () => {
     expect(fake.posted).toEqual([{ version: 1, url: request.url, method: "GET" }]);
   });
 
-  it("resolves on the terminal response and closes the port", async () => {
+  it("resolves on the terminal response and leaves the port to the Bridge", async () => {
     const fake = fakePort();
     const settled = requestHandoff(request, () => fake.port);
     fake.deliver({ result: "callback", url: "https://app.example.com/sso/acs", method: "GET" });
@@ -54,7 +54,9 @@ describe("requestHandoff", () => {
       outcome: "response",
       response: { result: "callback", url: "https://app.example.com/sso/acs", method: "GET" },
     });
-    expect(fake.disconnected).toBe(true);
+    // Disconnecting here would kill the native host, and the Bridge stays alive after a
+    // failure response so its window can explain what happened until the user closes it.
+    expect(fake.disconnected).toBe(false);
   });
 
   it("tells a disconnect with no reply apart from a response", async () => {

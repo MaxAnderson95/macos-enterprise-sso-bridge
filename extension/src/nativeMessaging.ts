@@ -61,8 +61,13 @@ export function requestHandoff(
       settle(
         response === null ? { outcome: "unreadable", message } : { outcome: "response", response },
       );
-      // One process serves one Handoff, so there is nothing further to hear.
-      port.disconnect();
+      // The port is deliberately left open. One process serves one Handoff, so there is
+      // nothing further to hear, but disconnecting here ends the native host: Gecko maps
+      // a port disconnect onto closing the host's stdin and killing the process shortly
+      // after. The Bridge keeps its window up after a failure so the user can read what
+      // happened and press Close, and killing it turns that into a window that vanishes
+      // on its own. The Bridge closes the connection itself when it exits, which is what
+      // the onDisconnect listener below already handles.
     });
 
     port.onDisconnect.addListener(() => {

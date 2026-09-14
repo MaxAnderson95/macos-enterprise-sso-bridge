@@ -45,13 +45,23 @@ async function deliverCallback(tabId: number, outcome: HandoffOutcome): Promise<
     console.log("Enterprise SSO Bridge: the returned callback URL was rejected");
     return "failure";
   }
-  if (callback.method === "POST") {
-    // A POST Callback is submitted from the Relay page, which is issue #26.
-    console.log("Enterprise SSO Bridge: a POST callback cannot be delivered yet");
-    return "failure";
+  if (callback.method !== "POST") {
+    return navigate(tabId, callback.url);
   }
+  // The Relay page reads this and deletes it as it reads, so it has to be there before
+  // the tab is sent to it. A tab that never gets there must not leave the assertion
+  // behind, and `takeCallback` is the delete.
+  await session.storeCallback(tabId, { url: callback.url, fields: callback.fields });
+  const end = await navigate(tabId, chrome.runtime.getURL("relay.html"));
+  if (end === "failure") {
+    await session.takeCallback(tabId);
+  }
+  return end;
+}
+
+async function navigate(tabId: number, url: string): Promise<HandoffEnd> {
   try {
-    await chrome.tabs.update(tabId, { url: callback.url });
+    await chrome.tabs.update(tabId, { url });
   } catch (error) {
     console.log("Enterprise SSO Bridge: could not navigate the tab", error);
     return "failure";

@@ -15,6 +15,8 @@ export const engines = ["chromium", "gecko"];
 
 const iconSizes = [16, 32, 48, 128];
 const pages = ["popup.html", "relay.html"];
+// The background worker, and the Relay page's script, which relay.html loads by name.
+const bundles = ["background.ts", "relay.ts"];
 
 /**
  * The committed manifest for one engine with the release version and the entry
@@ -36,16 +38,18 @@ async function buildEngine(engine, version) {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, "icons"), { recursive: true });
 
-  await esbuild.build({
-    entryPoints: [join(root, "src", "background.ts")],
-    outfile: join(out, "background.js"),
-    bundle: true,
-    format: "iife",
-    // The Chromium service worker and the Gecko event page are both ES2022 hosts;
-    // see manifest.gecko.json's strict_min_version for the Gecko floor.
-    target: ["chrome109", "firefox115"],
-    logLevel: "warning",
-  });
+  for (const bundle of bundles) {
+    await esbuild.build({
+      entryPoints: [join(root, "src", bundle)],
+      outfile: join(out, bundle.replace(/\.ts$/, ".js")),
+      bundle: true,
+      format: "iife",
+      // The Chromium service worker and the Gecko event page are both ES2022 hosts;
+      // see manifest.gecko.json's strict_min_version for the Gecko floor.
+      target: ["chrome109", "firefox115"],
+      logLevel: "warning",
+    });
+  }
 
   for (const page of pages) {
     copyFileSync(join(root, "pages", page), join(out, page));

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { captureMaxAgeMs, tabSession } from "../src/tabSession";
-import type { SessionArea } from "../src/tabSession";
+import type { PostCallback, SessionArea } from "../src/tabSession";
 import type { SignInRequest } from "../src/protocol";
 
 const request: SignInRequest = {
@@ -58,6 +58,14 @@ function slowSessionArea() {
   };
   return { area: slow, items };
 }
+
+const callback: PostCallback = {
+  url: "https://app.example.com/sso/acs",
+  fields: [
+    ["SAMLResponse", "PHNhbWxwOlJlc3BvbnNl"],
+    ["RelayState", "opaque"],
+  ],
+};
 
 const now = 1_780_000_000_000;
 
@@ -121,12 +129,13 @@ describe("tabSession", () => {
     expect(claims).toEqual([true, false]);
   });
 
-  it("drops the capture and the claim when the tab closes", async () => {
+  it("drops the capture, the claim, and the callback when the tab closes", async () => {
     const { area, items } = fakeSessionArea();
     const session = tabSession(area);
 
     await session.recordCapture(7, request, now);
     await session.claimHandoff(7, now);
+    await session.storeCallback(7, callback);
     await session.forgetTab(7);
 
     expect([...items.keys()]).toEqual([]);
@@ -149,10 +158,49 @@ describe("tabSession", () => {
     await expect(tabSession(area).readCapture(7, now)).resolves.toBeNull();
   });
 
-  it("ignores a stored value it cannot read as a capture", async () => {
+  // The Relay page's rule, and the reason it is the opposite of the capture's: a reload
+  // that resubmitted the assertion would be a replay of a credential.
+  it("hands the callback over once and leaves nothing behind", async () => {
+    const { area, items } = fakeSessionArea();
+    const session = tabSession(area);
+
+    await session.storeCallback(7, callback);
+
+    await expect(session.takeCallback(7)).resolves.toEqual(callback);
+    await expect(session.takeCallback(7)).resolves.toBeNull();
+    expect([...items.keys()]).toEqual([]);
+  });
+
+  // The Relay page is a fresh context with no memory of the background worker, so what
+  // it reads is whatever the area holds, and what a reload finds is what it left.
+  it("consumes the callback from the instance that did not store it", async () => {
     const { area } = fakeSessionArea();
-    await area.set({ "capture:7": "nonsense" });
+
+    await tabSession(area).storeCallback(7, callback);
+
+    await expect(tabSession(area).takeCallback(7)).resolves.toEqual(callback);
+    await expect(tabSession(area).takeCallback(7)).resolves.toBeNull();
+    await expect(tabSession(area).takeCallback(8)).resolves.toBeNull();
+  });
+
+  // The callback is stored a moment before the terminal success is recorded, so ending
+  // the Handoff must not spend it.
+  it("keeps the callback when the Handoff that stored it finishes", async () => {
+    const { area } = fakeSessionArea();
+    const session = tabSession(area);
+
+    await session.claimHandoff(7, now);
+    await session.storeCallback(7, callback);
+    await session.finishHandoff(7, "success");
+
+    await expect(session.takeCallback(7)).resolves.toEqual(callback);
+  });
+
+  it("ignores a stored value it cannot read as a capture or a callback", async () => {
+    const { area } = fakeSessionArea();
+    await area.set({ "capture:7": "nonsense", "callback:7": "nonsense" });
 
     await expect(tabSession(area).readCapture(7, now)).resolves.toBeNull();
+    await expect(tabSession(area).takeCallback(7)).resolves.toBeNull();
   });
 });

@@ -5,7 +5,7 @@
 // a module-level variable. `storage.session` is memory-only in both engines and dies
 // with the browser, which is the lifetime this state wants anyway.
 
-import type { SignInRequest } from "./protocol";
+import type { FormField, SignInRequest } from "./protocol";
 
 /** An attempt abandoned an hour ago must never replay, so a stale capture is ignored. */
 export const captureMaxAgeMs = 10 * 60 * 1000;
@@ -26,6 +26,12 @@ export interface SessionArea {
  */
 export type HandoffEnd = "success" | "failure";
 
+/** A POST Callback waiting in a tab for the Relay page to submit it. */
+export interface PostCallback {
+  url: string;
+  fields: FormField[];
+}
+
 export interface TabSession {
   /** Remembers the Sign-in request observed for a tab, replacing any earlier one. */
   recordCapture(tabId: number, request: SignInRequest, capturedAt: number): Promise<void>;
@@ -39,6 +45,14 @@ export interface TabSession {
   readCapture(tabId: number, now: number): Promise<SignInRequest | null>;
   /** Releases the claim, and spends the capture when the Handoff succeeded. */
   finishHandoff(tabId: number, end: HandoffEnd): Promise<void>;
+  /** Leaves a POST Callback for the Relay page that is about to load in this tab. */
+  storeCallback(tabId: number, callback: PostCallback): Promise<void>;
+  /**
+   * The POST Callback for a tab, deleted as it is read, so a reload of the Relay page
+   * finds nothing. Resubmitting an assertion is a replay of a credential, which is why
+   * this is the opposite of the capture's survive-on-failure rule.
+   */
+  takeCallback(tabId: number): Promise<PostCallback | null>;
   /** Drops everything held for a tab, for when it closes. */
   forgetTab(tabId: number): Promise<void>;
 }
@@ -50,6 +64,7 @@ interface StoredCapture {
 
 const captureKey = (tabId: number) => `capture:${tabId}`;
 const handoffKey = (tabId: number) => `handoff:${tabId}`;
+const callbackKey = (tabId: number) => `callback:${tabId}`;
 
 function storedCapture(value: unknown): StoredCapture | null {
   if (typeof value !== "object" || value === null) {
@@ -60,6 +75,17 @@ function storedCapture(value: unknown): StoredCapture | null {
     return null;
   }
   return { request, capturedAt };
+}
+
+function storedCallback(value: unknown): PostCallback | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const { url, fields } = value as Partial<PostCallback>;
+  if (typeof url !== "string" || !Array.isArray(fields)) {
+    return null;
+  }
+  return { url, fields };
 }
 
 /**
@@ -142,9 +168,22 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
       });
     },
 
+    async storeCallback(tabId, callback) {
+      await area.set({ [callbackKey(tabId)]: callback });
+    },
+
+    // The delete goes out before the value is returned, so nothing that happens to the
+    // caller afterwards can leave the assertion behind for a second reader.
+    async takeCallback(tabId) {
+      const key = callbackKey(tabId);
+      const stored = storedCallback((await area.get([key]))[key]);
+      await area.remove([key]);
+      return stored;
+    },
+
     forgetTab(tabId) {
       return serialized(tabId, async () => {
-        await area.remove([handoffKey(tabId), captureKey(tabId)]);
+        await area.remove([handoffKey(tabId), captureKey(tabId), callbackKey(tabId)]);
       });
     },
   };

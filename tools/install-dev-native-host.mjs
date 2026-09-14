@@ -37,15 +37,24 @@ const engines = {
   },
 };
 
+// An omitted value would otherwise resolve to the working directory, which exists and
+// so passes the later check, leaving both manifests pointing at a directory.
+function requirePath(value) {
+  if (!value) {
+    throw new Error("install-dev-native-host.mjs: --executable needs a path");
+  }
+  return value;
+}
+
 function parseArguments(argv) {
   let executable = defaultExecutable;
   let remove = false;
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
     if (argument === "--executable") {
-      executable = argv[++index] ?? "";
+      executable = requirePath(argv[++index]);
     } else if (argument.startsWith("--executable=")) {
-      executable = argument.slice("--executable=".length);
+      executable = requirePath(argument.slice("--executable=".length));
     } else if (argument === "--remove") {
       remove = true;
     } else {

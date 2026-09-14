@@ -78,25 +78,49 @@ function sessionStorage(): SessionArea {
 }
 
 /**
- * The per-tab state, over one storage area. Holding no state of its own is the point:
- * a fresh instance after an eviction reads exactly what the evicted one wrote, so
- * there is no cache in front of `storage.session` to lose.
+ * The per-tab state, over one storage area. It caches nothing: a fresh instance after
+ * an eviction reads exactly what the evicted one wrote, so there is nothing in front
+ * of `storage.session` to lose.
+ *
+ * The one piece of memory it does keep is a per-tab promise chain, because claiming is
+ * a read followed by a write and two toolbar clicks can otherwise both read an absent
+ * key and both start a Handoff. That chain only orders operations inside one worker,
+ * which is the only place two of them can overlap; an evicted worker has nothing left
+ * in flight to order, and the claim itself still lives in storage.
  */
 export function tabSession(area: SessionArea = sessionStorage()): TabSession {
+  const chains = new Map<number, Promise<unknown>>();
+
+  function serialized<T>(tabId: number, operation: () => Promise<T>): Promise<T> {
+    const result = (chains.get(tabId) ?? Promise.resolve()).then(operation, operation);
+    // Keep the chain alive for the next caller but never let it reject, and drop it
+    // once this tab is idle so a long-lived worker does not accumulate entries.
+    const link = result.catch(() => undefined);
+    chains.set(tabId, link);
+    void link.then(() => {
+      if (chains.get(tabId) === link) {
+        chains.delete(tabId);
+      }
+    });
+    return result;
+  }
+
   return {
     async recordCapture(tabId, request, capturedAt) {
       const stored: StoredCapture = { request, capturedAt };
       await area.set({ [captureKey(tabId)]: stored });
     },
 
-    async claimHandoff(tabId, startedAt) {
-      const key = handoffKey(tabId);
-      const existing = await area.get([key]);
-      if (existing[key] !== undefined) {
-        return false;
-      }
-      await area.set({ [key]: { startedAt } });
-      return true;
+    claimHandoff(tabId, startedAt) {
+      return serialized(tabId, async () => {
+        const key = handoffKey(tabId);
+        const existing = await area.get([key]);
+        if (existing[key] !== undefined) {
+          return false;
+        }
+        await area.set({ [key]: { startedAt } });
+        return true;
+      });
     },
 
     async readCapture(tabId, now) {
@@ -108,14 +132,20 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
       return stored.request;
     },
 
-    async finishHandoff(tabId, end) {
-      await area.remove(
-        end === "success" ? [handoffKey(tabId), captureKey(tabId)] : [handoffKey(tabId)],
-      );
+    // Releasing runs through the same chain as claiming, so a release cannot land
+    // between a claim's read and its write.
+    finishHandoff(tabId, end) {
+      return serialized(tabId, async () => {
+        await area.remove(
+          end === "success" ? [handoffKey(tabId), captureKey(tabId)] : [handoffKey(tabId)],
+        );
+      });
     },
 
-    async forgetTab(tabId) {
-      await area.remove([handoffKey(tabId), captureKey(tabId)]);
+    forgetTab(tabId) {
+      return serialized(tabId, async () => {
+        await area.remove([handoffKey(tabId), captureKey(tabId)]);
+      });
     },
   };
 }

@@ -34,6 +34,31 @@ function fakeSessionArea() {
   return { area, items };
 }
 
+/**
+ * The same stand-in, with a real delay inside every read. The browser's storage area
+ * takes time to answer, so two clicks arriving together would both read an absent claim
+ * and both start a Handoff unless the claim is serialized. The instant fake above
+ * resolves too promptly for that window to exist.
+ */
+function slowSessionArea() {
+  const { area, items } = fakeSessionArea();
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+  const slow: SessionArea = {
+    ...area,
+    get: async (keys) => {
+      await settle();
+      return area.get(keys);
+    },
+    // The write is delayed too. Without it the first claim's write always lands during
+    // the gap between the two reads, and the race the serializer prevents never appears.
+    set: async (entries) => {
+      await settle();
+      return area.set(entries);
+    },
+  };
+  return { area: slow, items };
+}
+
 const now = 1_780_000_000_000;
 
 describe("tabSession", () => {
@@ -83,6 +108,17 @@ describe("tabSession", () => {
     await session.claimHandoff(7, now);
     await session.finishHandoff(7, "success");
     await expect(session.readCapture(7, now)).resolves.toBeNull();
+  });
+
+  it("grants only one of two claims that overlap on the same tab", async () => {
+    const { area } = slowSessionArea();
+    const session = tabSession(area);
+
+    // Both clicks start before either read has answered, which is the ordering a
+    // second toolbar click during the first click's read produces.
+    const claims = await Promise.all([session.claimHandoff(7, now), session.claimHandoff(7, now)]);
+
+    expect(claims).toEqual([true, false]);
   });
 
   it("drops the capture and the claim when the tab closes", async () => {

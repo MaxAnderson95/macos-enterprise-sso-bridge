@@ -16,12 +16,16 @@ func runHandoff(caller: AllowedBrowser) -> Never {
     switch received {
     case .answer(let response):
       try channel.send(response)
-    case .request:
-      // Temporary. Planning the Handoff is issue #23, the Approval is #24, and the
-      // replay is #25; until the first of those lands there is nothing to approve,
-      // so the honest terminal response is the one the user would have given.
+    case .request(let request):
+      guard IdentityProviders.plan(for: request) != nil else {
+        try channel.send(.error(.unsupportedRequest, detail: nil))
+        break
+      }
+      // Temporary. The plan is real, but the Approval is issue #24 and the replay is
+      // #25, so there is still nowhere to take an approved Handoff. Declining is what
+      // the user would have answered to a prompt this build cannot show.
       BridgeLog.wire.info(
-        "no Handoff pipeline on this build, answering declined to \(caller.displayName, privacy: .public)"
+        "no Approval on this build, answering declined to \(caller.displayName, privacy: .public)"
       )
       try channel.send(.declined)
     }

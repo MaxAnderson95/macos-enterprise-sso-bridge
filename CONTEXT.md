@@ -16,6 +16,10 @@ _Avoid_: add-on, plugin
 The service that authenticates the user and issues the response the application consumes. Entra is the only supported identity provider.
 _Avoid_: IdP (in prose), login provider, Microsoft (as a synonym for the provider)
 
+**Enterprise SSO extension**:
+The macOS platform component that authenticates the Mac to the identity provider, configured by a profile that names which applications may use it. Always written in full, never shortened to "the extension", which is the browser half of this project.
+_Avoid_: SSO extension, PSSO, the extension
+
 **Identity provider adapter**:
 The Bridge-owned definition of one identity provider: its sign-in entry origins, what it can say about where a Sign-in request will send the user, and the rules that recognize a Callback leaving it. The Extension receives only the entry origins it needs, derived from the same definition.
 _Avoid_: provider plugin, provider config

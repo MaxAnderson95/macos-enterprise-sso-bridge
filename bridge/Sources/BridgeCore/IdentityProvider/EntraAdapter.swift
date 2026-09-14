@@ -85,9 +85,17 @@ public struct EntraAdapter: IdentityProviderAdapter {
     return url
   }
 
+  /// The path as its segments, each decoded on its own.
+  ///
+  /// Decoding the whole path first would turn `%2F` into a separator and make
+  /// `/callback/a%2Fb` compare equal to `/callback/a/b`, which an Application can route
+  /// to different resources. Splitting before decoding keeps an encoded slash inside
+  /// its segment while still ignoring cosmetic differences like `%7E` for `~`.
   /// An empty path and "/" are the same place.
-  private static func normalizedPath(of url: URL) -> String {
-    let path = url.path(percentEncoded: false)
-    return path.isEmpty ? "/" : path
+  private static func normalizedPath(of url: URL) -> [String] {
+    let path = url.path(percentEncoded: true)
+    let segments = (path.isEmpty ? "/" : path)
+      .split(separator: "/", omittingEmptySubsequences: false)
+    return segments.map { $0.removingPercentEncoding ?? String($0) }
   }
 }

@@ -75,8 +75,15 @@ enum SAMLAuthnRequest {
     return output.prefix(written)
   }
 
+  /// A UTF-8 serializer may emit a byte-order mark, which is valid before the
+  /// declaration and which `XMLDocument` parses happily, so skip it before looking for
+  /// the opening angle bracket rather than discarding the document.
   private static func opensLikeXML(_ data: Data) -> Bool {
-    data.drop { $0 == 0x20 || $0 == 0x09 || $0 == 0x0a || $0 == 0x0d }.first == 0x3c
+    var bytes = data[...]
+    if bytes.starts(with: [0xef, 0xbb, 0xbf]) {
+      bytes = bytes.dropFirst(3)
+    }
+    return bytes.drop { $0 == 0x20 || $0 == 0x09 || $0 == 0x0a || $0 == 0x0d }.first == 0x3c
   }
 
   /// An entity identifier is often a URN, which is nothing to show a user, so only an

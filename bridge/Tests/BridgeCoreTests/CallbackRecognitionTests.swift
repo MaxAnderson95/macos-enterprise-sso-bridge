@@ -42,6 +42,28 @@ struct CallbackRecognitionTests {
     #expect(Self.plan.recognizes(testCase.candidate) == testCase.recognized)
   }
 
+  /// An encoded slash belongs to one path segment and a literal slash separates two, so
+  /// an Application can route them to different resources. Treating them as the same
+  /// place would let whichever came first end the Handoff.
+  @Test("An encoded slash in the redirect_uri path is not a separator")
+  func encodedSlashIsNotASeparator() throws {
+    let plan = try #require(
+      EntraAdapter().plan(
+        .get(
+          url: URL(
+            string: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+              + "?client_id=abc&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback%2Fa%252Fb"
+          )!
+        )
+      )
+    )
+    let candidate = { (url: String) in
+      CandidateNavigation(url: URL(string: url)!, method: .get, fields: [])
+    }
+    #expect(plan.recognizes(candidate("https://app.example.com/callback/a%2Fb")))
+    #expect(!plan.recognizes(candidate("https://app.example.com/callback/a/b")))
+  }
+
   static let recognitionCases: [RecognitionCase] = [
     RecognitionCase(
       name: "the redirect_uri itself",

@@ -64,6 +64,15 @@ struct EntraPlanTests {
       destination: "https://app.example.com/sso/acs"
     ),
     PlanCase(
+      name: "SAML HTTP-POST binding whose XML carries a UTF-8 byte-order mark",
+      request: post(
+        "\(entra)/common/saml2",
+        [("SAMLRequest", SAMLFixtures.acsPostBindingWithBOM), ("RelayState", "opaque")]
+      ),
+      replayable: true,
+      destination: "https://app.example.com/sso/acs"
+    ),
+    PlanCase(
       name: "SAML HTTP-Redirect binding, inflated to reach the ACS URL",
       request: get(
         "\(entra)/common/saml2?SAMLRequest="

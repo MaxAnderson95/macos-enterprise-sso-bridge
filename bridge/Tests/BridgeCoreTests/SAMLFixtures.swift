@@ -40,6 +40,22 @@ enum SAMLFixtures {
     c2FtbHA6QXV0aG5SZXF1ZXN0Pg==
     """
 
+  /// The HTTP-POST AuthnRequest again, with the UTF-8 byte-order mark a serializer may
+  /// emit ahead of the document. `EF BB BF` is prepended to the same XML before base64.
+  static let acsPostBindingWithBOM = """
+    77u/PHNhbWxwOkF1dGhuUmVxdWVzdCB4bWxuczpzYW1scD0idXJuOm9hc2lzOm5hbWVzOnRjOl\
+    NBTUw6Mi4wOnByb3RvY29sIiB4bWxuczpzYW1sPSJ1cm46b2FzaXM6bmFtZXM6dGM6U0FNTDoy\
+    LjA6YXNzZXJ0aW9uIiBJRD0iXzFkM2YyYjBjLTdhNDEtNGYyZS05Yzg4LTBiNmIwZjVjMmExMS\
+    IgVmVyc2lvbj0iMi4wIiBJc3N1ZUluc3RhbnQ9IjIwMjYtMDktMTRUMTI6MDA6MDBaIiBEZXN0\
+    aW5hdGlvbj0iaHR0cHM6Ly9sb2dpbi5taWNyb3NvZnRvbmxpbmUuY29tL2NvbW1vbi9zYW1sMi\
+    IgQXNzZXJ0aW9uQ29uc3VtZXJTZXJ2aWNlVVJMPSJodHRwczovL2FwcC5leGFtcGxlLmNvbS9z\
+    c28vYWNzIiBQcm90b2NvbEJpbmRpbmc9InVybjpvYXNpczpuYW1lczp0YzpTQU1MOjIuMDpiaW\
+    5kaW5nczpIVFRQLVBPU1QiPjxzYW1sOklzc3Vlcj5odHRwczovL2FwcC5leGFtcGxlLmNvbS9z\
+    c28vbWV0YWRhdGE8L3NhbWw6SXNzdWVyPjxzYW1scDpOYW1lSURQb2xpY3kgRm9ybWF0PSJ1cm\
+    46b2FzaXM6bmFtZXM6dGM6U0FNTDoyLjA6bmFtZWlkLWZvcm1hdDpwZXJzaXN0ZW50IiBBbGxv\
+    d0NyZWF0ZT0idHJ1ZSIvPjwvc2FtbHA6QXV0aG5SZXF1ZXN0Pg==
+    """
+
   /// An AuthnRequest with no `AssertionConsumerServiceURL`, so the issuer is all there
   /// is to derive a destination from.
   static let issuerOnly = """

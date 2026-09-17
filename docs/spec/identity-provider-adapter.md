@@ -26,7 +26,7 @@ The plan closes over the Sign-in request, so the core never passes it back on ev
 
 ## What the Entra adapter owns
 
-- `https://login.microsoftonline.com` as its entry origin.
+- `https://login.microsoftonline.com` as its entry origin, and `https://login.microsoft.com` as an interior origin: a host Entra sends the user to mid sign-in (the passkey page) where no Sign-in request starts.
 - `redirect_uri` extraction from the Sign-in request's query, and matching a candidate against it on scheme, host, port, and path.
 - For SAML, deriving the destination by inflating and parsing the `SAMLRequest` to reach the ACS URL or issuer.
 - The recognized field names `SAMLResponse`, `code`, `id_token`, and `error`.
@@ -47,6 +47,8 @@ This check is not redundant with the Extension's capture filter. The Extension i
 The entry origins exist in three more places on the Extension side: `host_permissions` in each manifest, the `webRequest` listener's `urls` filter, and the click-time origin check on the active tab. If any of those drifts from the adapter, capture fails silently, which is the worst failure this system can have.
 
 So the origins are not written in four places. One checked-in data file, `identity-providers/entra.json`, lists each provider's entry origins and is the single source of truth. The Bridge's Swift constant and the Extension's TypeScript constant are generated from it, and both manifests' `host_permissions` are templated from it at build time. The mechanics are in [build.md](build.md).
+
+The same file carries two more things only the Extension consumes. `interiorOrigins` are the hosts the provider moves the user through mid sign-in; merged with the entry origins into one `identityProviderOrigins` constant, they feed the click-time check and nothing else. They are not host permissions, not in the listener filter, and not an adapter's entry origins, because no Sign-in request begins there. `signInRequestMarkers` are the field names, `redirect_uri` and `SAMLRequest`, whose presence in a load's query or form body makes it the Application's Sign-in request rather than a step the provider issued inside one; the capture rule in [extension.md](extension.md) records nothing without one. They name the same fields `EntraAdapter.plan` reads, and the relationship is one-directional: the adapter stays the authority on what is replayable, and the Extension's list only has to be narrow enough that whatever it skips the adapter would have refused. Adding a field the adapter plans from to the adapter without adding it here fails silently, in the way this section exists to prevent, so the two move together.
 
 This is deliberately different from the protocol schema, where the types are hand-written on both sides. There the two definitions are structural and a mismatch fails loudly at the first message; here they are a value, and a mismatch fails silently by simply never capturing anything.
 

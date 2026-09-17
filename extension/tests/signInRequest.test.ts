@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEntryOrigin, signInRequestFrom } from "../src/signInRequest";
+import { isIdentityProviderOrigin, signInRequestFrom } from "../src/signInRequest";
 import type { CapturedRequestDetails } from "../src/signInRequest";
 
 const authorizeUrl =
@@ -59,13 +59,18 @@ describe("signInRequestFrom", () => {
   // silently drop one of them.
   it("keeps a repeated field name as separate pairs", () => {
     const request = signInRequestFrom(
-      details({ requestBody: { formData: { scope: ["openid", "profile"], state: ["abc"] } } }),
+      details({
+        requestBody: {
+          formData: { SAMLRequest: ["fZJNb9sw"], scope: ["openid", "profile"], state: ["abc"] },
+        },
+      }),
     );
 
     expect(request).toEqual({
       url: samlUrl,
       method: "POST",
       fields: [
+        ["SAMLRequest", "fZJNb9sw"],
         ["scope", "openid"],
         ["scope", "profile"],
         ["state", "abc"],
@@ -95,42 +100,81 @@ describe("signInRequestFrom", () => {
 
   it("joins raw elements before parsing, since a body can arrive in chunks", () => {
     const request = signInRequestFrom(
-      details({ requestBody: { raw: [{ bytes: encode("a=1&b") }, { bytes: encode("=2") }] } }),
+      details({
+        requestBody: { raw: [{ bytes: encode("SAMLRequest=fZJ&b") }, { bytes: encode("=2") }] },
+      }),
     );
 
     expect(request).toEqual({
       url: samlUrl,
       method: "POST",
       fields: [
-        ["a", "1"],
+        ["SAMLRequest", "fZJ"],
         ["b", "2"],
       ],
     });
   });
 
-  it("takes a POST with no readable body as a POST with no fields", () => {
-    expect(signInRequestFrom(details({ requestBody: {} }))).toEqual({
-      url: samlUrl,
-      method: "POST",
-      fields: [],
-    });
+  // The HTTP-Redirect SAML binding puts the request in the query, and the marker check
+  // has to find it there for a GET as well as in a POST's fields.
+  it("keeps a GET carrying SAMLRequest in its query", () => {
+    const url = `${samlUrl}?SAMLRequest=fZJNb9sw&RelayState=%2F`;
+    expect(signInRequestFrom({ url, method: "GET" })).toEqual({ url, method: "GET" });
   });
 
   it("ignores a method that is not a sign-in navigation", () => {
     expect(signInRequestFrom(details({ method: "HEAD" }))).toBeNull();
   });
+
+  // A saved account sends Entra through its own pages before any credential is asked
+  // for: the username POST, the passkey page's "Sign in another way", a forgotten
+  // account. Each lands back on the entry origin with nothing the Bridge can replay,
+  // and each would otherwise replace the Application's request.
+  it("ignores a load with no marker, which is a step inside a sign-in and not one", () => {
+    expect(
+      signInRequestFrom({
+        url: "https://login.microsoftonline.com/tenant/reprocess?ctx=opaque",
+        method: "GET",
+      }),
+    ).toBeNull();
+    expect(
+      signInRequestFrom({
+        url: "https://login.microsoftonline.com/tenant/login",
+        method: "POST",
+        requestBody: { formData: { login: ["user@example.com"], ctx: ["opaque"] } },
+      }),
+    ).toBeNull();
+    expect(signInRequestFrom(details({ requestBody: {} }))).toBeNull();
+  });
+
+  it("does not let a marker-shaped path or a marker inside a value count", () => {
+    expect(
+      signInRequestFrom({
+        url: "https://login.microsoftonline.com/redirect_uri/SAMLRequest",
+        method: "GET",
+      }),
+    ).toBeNull();
+    expect(
+      signInRequestFrom(details({ requestBody: { formData: { ctx: ["SAMLRequest"] } } })),
+    ).toBeNull();
+  });
 });
 
-describe("isEntryOrigin", () => {
-  it("accepts the generated entry origin whatever the path", () => {
-    expect(isEntryOrigin(authorizeUrl)).toBe(true);
-    expect(isEntryOrigin("https://login.microsoftonline.com/")).toBe(true);
+describe("isIdentityProviderOrigin", () => {
+  it("accepts the entry origin and the interior origin whatever the path", () => {
+    expect(isIdentityProviderOrigin(authorizeUrl)).toBe(true);
+    expect(isIdentityProviderOrigin("https://login.microsoftonline.com/")).toBe(true);
+    expect(isIdentityProviderOrigin("https://login.microsoft.com/tenant/bridge/fido?iiv=1")).toBe(
+      true,
+    );
   });
 
   it("rejects a look-alike host, a plain-HTTP origin, and a missing URL", () => {
-    expect(isEntryOrigin("https://login.microsoftonline.com.evil.test/common")).toBe(false);
-    expect(isEntryOrigin("http://login.microsoftonline.com/common")).toBe(false);
-    expect(isEntryOrigin("not a url")).toBe(false);
-    expect(isEntryOrigin(undefined)).toBe(false);
+    expect(isIdentityProviderOrigin("https://login.microsoftonline.com.evil.test/common")).toBe(
+      false,
+    );
+    expect(isIdentityProviderOrigin("http://login.microsoftonline.com/common")).toBe(false);
+    expect(isIdentityProviderOrigin("not a url")).toBe(false);
+    expect(isIdentityProviderOrigin(undefined)).toBe(false);
   });
 });

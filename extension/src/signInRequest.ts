@@ -2,7 +2,7 @@
 // Bridge replays. Pure functions over values: the listener registration lives in
 // background.ts, so every normalization rule here is testable without a browser.
 
-import { entryOrigins } from "./generated/entryOrigins";
+import { identityProviderOrigins, signInRequestMarkers } from "./generated/entryOrigins";
 import type { FormField, SignInRequest } from "./protocol";
 
 /**
@@ -70,8 +70,23 @@ function fieldsFromRaw(raw: { bytes?: ArrayBuffer | undefined }[]): FormField[] 
  * The Sign-in request carried by this navigation, or null when it is not one this
  * Extension can replay. A GET keeps only its URL; a POST carries its form fields in
  * order. Anything other than GET or POST is not a sign-in navigation worth capturing.
+ *
+ * Nor is a load that carries none of the generated markers. Once a saved account
+ * exists, Entra moves the user through pages of its own before asking for a credential:
+ * the username POST to `/login`, "Sign in another way" back to `/reprocess?ctx=...`, a
+ * forgotten account. Each lands on the entry origin with no `redirect_uri` and no
+ * `SAMLRequest`, and recording one would replace the only request the Bridge can
+ * replay with one it would refuse. The markers are what decide, not who issued the
+ * navigation or which redirect chain delivered it: an Application whose Callback
+ * handler answers with a fresh authorization arrives with Entra as initiator and often
+ * the same request ID, and it has to win.
  */
 export function signInRequestFrom(details: CapturedRequestDetails): SignInRequest | null {
+  const request = requestFrom(details);
+  return request !== null && carriesMarker(request) ? request : null;
+}
+
+function requestFrom(details: CapturedRequestDetails): SignInRequest | null {
   if (details.method === "GET") {
     return { url: details.url, method: "GET" };
   }
@@ -88,17 +103,34 @@ export function signInRequestFrom(details: CapturedRequestDetails): SignInReques
   return { url: details.url, method: "POST", fields: [] };
 }
 
+/** A marker in the query counts for either method; the HTTP-Redirect SAML binding uses it. */
+function carriesMarker(request: SignInRequest): boolean {
+  let query: URLSearchParams;
+  try {
+    query = new URL(request.url).searchParams;
+  } catch {
+    return false;
+  }
+  if (signInRequestMarkers.some((marker) => query.has(marker))) {
+    return true;
+  }
+  return (
+    request.method === "POST" &&
+    request.fields.some(([name]) => signInRequestMarkers.includes(name))
+  );
+}
+
 /**
- * Whether a tab sitting at this URL is on the identity provider's sign-in surface. The
- * click handler's "wrong page" check, against the same generated origins the listener
- * filters on, compared as bare origins so a path or query cannot widen the match.
+ * Whether a tab sitting at this URL is on the identity provider: an entry origin or one
+ * of the interior origins it moves the user through. The click handler's "wrong page"
+ * check, compared as bare origins so a path or query cannot widen the match.
  */
-export function isEntryOrigin(url: string | undefined): boolean {
+export function isIdentityProviderOrigin(url: string | undefined): boolean {
   if (url === undefined) {
     return false;
   }
   try {
-    return entryOrigins.includes(new URL(url).origin);
+    return identityProviderOrigins.includes(new URL(url).origin);
   } catch {
     return false;
   }

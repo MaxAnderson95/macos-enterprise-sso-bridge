@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEntryOrigin, signInRequestFrom } from "../src/signInRequest";
+import { isIdentityProviderOrigin, signInRequestFrom } from "../src/signInRequest";
 import type { CapturedRequestDetails } from "../src/signInRequest";
 
 const authorizeUrl =
@@ -119,18 +119,64 @@ describe("signInRequestFrom", () => {
   it("ignores a method that is not a sign-in navigation", () => {
     expect(signInRequestFrom(details({ method: "HEAD" }))).toBeNull();
   });
+
+  // A saved account sends Entra through its own pages before any credential is asked
+  // for: the username POST, the passkey page's "Sign in another way", a forgotten
+  // account. Each lands back on the entry origin with nothing left to replay, and each
+  // would otherwise replace the Application's request.
+  it("ignores a navigation the identity provider issued itself, under either engine's name", () => {
+    const reprocess = "https://login.microsoftonline.com/tenant/reprocess?ctx=opaque";
+    expect(
+      signInRequestFrom({
+        url: reprocess,
+        method: "GET",
+        initiator: "https://login.microsoft.com",
+      }),
+    ).toBeNull();
+    expect(
+      signInRequestFrom({
+        url: reprocess,
+        method: "GET",
+        originUrl: "https://login.microsoft.com/tenant/bridge/fido?iiv=1",
+      }),
+    ).toBeNull();
+    expect(
+      signInRequestFrom(
+        details({
+          initiator: "https://login.microsoftonline.com",
+          requestBody: { formData: { login: ["user@example.com"] } },
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("captures a navigation from the Application, from nowhere, or from an opaque origin", () => {
+    const expected = { url: authorizeUrl, method: "GET" };
+    expect(
+      signInRequestFrom({ url: authorizeUrl, method: "GET", initiator: "https://app.example.com" }),
+    ).toEqual(expected);
+    expect(signInRequestFrom({ url: authorizeUrl, method: "GET" })).toEqual(expected);
+    expect(signInRequestFrom({ url: authorizeUrl, method: "GET", initiator: "null" })).toEqual(
+      expected,
+    );
+  });
 });
 
-describe("isEntryOrigin", () => {
-  it("accepts the generated entry origin whatever the path", () => {
-    expect(isEntryOrigin(authorizeUrl)).toBe(true);
-    expect(isEntryOrigin("https://login.microsoftonline.com/")).toBe(true);
+describe("isIdentityProviderOrigin", () => {
+  it("accepts the entry origin and the interior origin whatever the path", () => {
+    expect(isIdentityProviderOrigin(authorizeUrl)).toBe(true);
+    expect(isIdentityProviderOrigin("https://login.microsoftonline.com/")).toBe(true);
+    expect(isIdentityProviderOrigin("https://login.microsoft.com/tenant/bridge/fido?iiv=1")).toBe(
+      true,
+    );
   });
 
   it("rejects a look-alike host, a plain-HTTP origin, and a missing URL", () => {
-    expect(isEntryOrigin("https://login.microsoftonline.com.evil.test/common")).toBe(false);
-    expect(isEntryOrigin("http://login.microsoftonline.com/common")).toBe(false);
-    expect(isEntryOrigin("not a url")).toBe(false);
-    expect(isEntryOrigin(undefined)).toBe(false);
+    expect(isIdentityProviderOrigin("https://login.microsoftonline.com.evil.test/common")).toBe(
+      false,
+    );
+    expect(isIdentityProviderOrigin("http://login.microsoftonline.com/common")).toBe(false);
+    expect(isIdentityProviderOrigin("not a url")).toBe(false);
+    expect(isIdentityProviderOrigin(undefined)).toBe(false);
   });
 });

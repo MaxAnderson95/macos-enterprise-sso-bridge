@@ -32,9 +32,24 @@ export interface PostCallback {
   fields: FormField[];
 }
 
+/**
+ * A Sign-in request as the listener saw it, with the engine's ID for the underlying
+ * request. Every hop of a redirect chain arrives as its own `onBeforeRequest` event
+ * carrying the same ID, in both engines.
+ */
+export interface Capture {
+  request: SignInRequest;
+  requestId: string;
+}
+
 export interface TabSession {
-  /** Remembers the Sign-in request observed for a tab, replacing any earlier one. */
-  recordCapture(tabId: number, request: SignInRequest, capturedAt: number): Promise<void>;
+  /**
+   * Remembers the Sign-in request observed for a tab, replacing any earlier one unless
+   * this is a later hop of the request already remembered. The Application's request
+   * is the first hop; where the identity provider redirects it next is the provider's
+   * business, and often a URL with nothing left in it to replay.
+   */
+  recordCapture(tabId: number, capture: Capture, capturedAt: number): Promise<void>;
   /**
    * Marks a Handoff as running for this tab, or returns false when one already is, in
    * which case the caller does nothing at all: the claim was not taken and must not be
@@ -67,8 +82,7 @@ export interface TabSession {
   forgetTab(tabId: number): Promise<void>;
 }
 
-interface StoredCapture {
-  request: SignInRequest;
+interface StoredCapture extends Capture {
   capturedAt: number;
 }
 
@@ -81,11 +95,11 @@ function storedCapture(value: unknown): StoredCapture | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
-  const { request, capturedAt } = value as Partial<StoredCapture>;
-  if (request === undefined || typeof capturedAt !== "number") {
+  const { request, requestId, capturedAt } = value as Partial<StoredCapture>;
+  if (request === undefined || typeof requestId !== "string" || typeof capturedAt !== "number") {
     return null;
   }
-  return { request, capturedAt };
+  return { request, requestId, capturedAt };
 }
 
 function storedCallback(value: unknown): PostCallback | null {
@@ -113,9 +127,10 @@ function sessionStorage(): SessionArea {
  * Handoffs. Captures, callbacks, and action states are shared with other documents;
  * the active claim set belongs to the background instance driving the Handoffs.
  *
- * A per-tab promise chain serializes claiming, because claiming is
- * a read followed by a write and two toolbar clicks can otherwise both read an absent
- * key and both start a Handoff. That chain only orders operations inside one worker,
+ * A per-tab promise chain serializes claiming and capturing, because each is a read
+ * followed by a write: two toolbar clicks can otherwise both read an absent key and
+ * both start a Handoff, and two hops of a redirect chain can both read the capture
+ * before either has written. That chain only orders operations inside one worker,
  * which is the only place two of them can overlap; an evicted worker has nothing left
  * in flight to order, and the claim itself still lives in storage.
  */
@@ -138,9 +153,18 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
   }
 
   return {
-    async recordCapture(tabId, request, capturedAt) {
-      const stored: StoredCapture = { request, capturedAt };
-      await area.set({ [captureKey(tabId)]: stored });
+    // Serialized because the hops of one chain fire in quick succession, and a read
+    // that raced the previous hop's write would let the second hop win.
+    recordCapture(tabId, capture, capturedAt) {
+      return serialized(tabId, async () => {
+        const key = captureKey(tabId);
+        const existing = storedCapture((await area.get([key]))[key]);
+        if (existing?.requestId === capture.requestId) {
+          return;
+        }
+        const stored: StoredCapture = { ...capture, capturedAt };
+        await area.set({ [key]: stored });
+      });
     },
 
     claimHandoff(tabId, startedAt) {

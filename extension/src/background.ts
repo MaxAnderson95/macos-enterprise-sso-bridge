@@ -4,7 +4,7 @@ import { entryOriginMatchPatterns } from "./generated/entryOrigins";
 import { requestHandoff } from "./nativeMessaging";
 import type { HandoffOutcome } from "./nativeMessaging";
 import { retriedTabId } from "./retry";
-import { isEntryOrigin, signInRequestFrom } from "./signInRequest";
+import { isIdentityProviderOrigin, signInRequestFrom } from "./signInRequest";
 import { tabSession } from "./tabSession";
 import type { HandoffEnd } from "./tabSession";
 
@@ -28,7 +28,11 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (request === null) {
       return;
     }
-    void session.recordCapture(details.tabId, request, Date.now());
+    void session.recordCapture(
+      details.tabId,
+      { request, requestId: details.requestId },
+      Date.now(),
+    );
   },
   { urls: entryOriginMatchPatterns, types: ["main_frame"] },
   ["requestBody"],
@@ -99,7 +103,7 @@ async function runHandoff(tabId: number, start: Start) {
   // Handoff. Only a terminal success spends the capture.
   let end: HandoffEnd = "failure";
   try {
-    if (start.from === "click" && !isEntryOrigin(start.tabUrl)) {
+    if (start.from === "click" && !isIdentityProviderOrigin(start.tabUrl)) {
       await state.show(tabId, "wrongPage");
       return;
     }

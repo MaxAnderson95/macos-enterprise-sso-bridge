@@ -217,7 +217,7 @@ The Bridge caps inbound frame allocation at 1 MiB. For outgoing responses it ser
 
 ### Capturing and replaying the Sign-in request
 
-The Extension observes main-frame requests to the configured Entra entry origins with `webRequest.onBeforeRequest`. It records GET URLs and POST form values without blocking the navigation. The toolbar action requires the current tab to be at an entry origin and a captured request less than ten minutes old. This matters for SAML: the visible login-page URL alone may no longer contain the original `SAMLRequest` POST that started authentication.
+The Extension observes main-frame requests to the configured Entra entry origins with `webRequest.onBeforeRequest`. It records GET URLs and POST form values without blocking the navigation, and keeps the Application's request rather than the navigations Entra issues on its own afterwards (a username submission, "Sign in another way" from the passkey page, a forgotten account). The toolbar action requires the current tab to be on an Entra page, including the `login.microsoft.com` passkey page, and a captured request less than ten minutes old. This matters for SAML: the visible login-page URL alone may no longer contain the original `SAMLRequest` POST that started authentication.
 
 Captures, per-tab claims, action state, and pending POST Callbacks live in memory-only `storage.session`, surviving Extension background restarts. A failed Handoff retains its capture for retry within the capture's age limit; successful delivery spends it. A locally active claim has no expiry while it waits for the Bridge. A claim inherited after a background restart can be reclaimed after thirty minutes. Closing a tab removes its stored state.
 

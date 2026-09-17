@@ -26,7 +26,7 @@ The plan closes over the Sign-in request, so the core never passes it back on ev
 
 ## What the Entra adapter owns
 
-- `https://login.microsoftonline.com` as its entry origin.
+- `https://login.microsoftonline.com` as its entry origin, and `https://login.microsoft.com` as an interior origin: a host Entra sends the user to mid sign-in (the passkey page) where no Sign-in request starts.
 - `redirect_uri` extraction from the Sign-in request's query, and matching a candidate against it on scheme, host, port, and path.
 - For SAML, deriving the destination by inflating and parsing the `SAMLRequest` to reach the ACS URL or issuer.
 - The recognized field names `SAMLResponse`, `code`, `id_token`, and `error`.
@@ -47,6 +47,8 @@ This check is not redundant with the Extension's capture filter. The Extension i
 The entry origins exist in three more places on the Extension side: `host_permissions` in each manifest, the `webRequest` listener's `urls` filter, and the click-time origin check on the active tab. If any of those drifts from the adapter, capture fails silently, which is the worst failure this system can have.
 
 So the origins are not written in four places. One checked-in data file, `identity-providers/entra.json`, lists each provider's entry origins and is the single source of truth. The Bridge's Swift constant and the Extension's TypeScript constant are generated from it, and both manifests' `host_permissions` are templated from it at build time. The mechanics are in [build.md](build.md).
+
+The same file carries the provider's interior origins under `interiorOrigins`. Only the Extension consumes them, merged with the entry origins into one `identityProviderOrigins` constant, for the two places that need to know whether a page or a navigation's origin is still the provider: the click-time check and the rule that keeps the provider's own navigations from replacing the capture ([extension.md](extension.md)). They are not host permissions, not in the listener filter, and not an adapter's entry origins, because no Sign-in request begins there.
 
 This is deliberately different from the protocol schema, where the types are hand-written on both sides. There the two definitions are structural and a mismatch fails loudly at the first message; here they are a value, and a mismatch fails silently by simply never capturing anything.
 

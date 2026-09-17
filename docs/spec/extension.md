@@ -14,7 +14,14 @@ The Chromium build sets `"incognito": "split"`, which it must, because the defau
 
 A `webRequest.onBeforeRequest` listener with `{ urls: <generated entry origins>, types: ["main_frame"] }` and `["requestBody"]`.
 
-For a POST it reads `requestBody.formData`, decoding Chromium's `ArrayBuffer` values to strings and flattening repeated names into `[name, value]` pairs; if only `raw` is present it decodes and parses the body as urlencoded. For a GET it keeps the URL. The result is written to `storage.session` keyed by tab, with the capture time.
+For a POST it reads `requestBody.formData`, decoding Chromium's `ArrayBuffer` values to strings and flattening repeated names into `[name, value]` pairs; if only `raw` is present it decodes and parses the body as urlencoded. For a GET it keeps the URL. The result is written to `storage.session` keyed by tab, with the capture time and the engine's request ID.
+
+Not every main-frame load of an entry origin is the Application's Sign-in request. Once a saved account exists, Entra moves the user through pages of its own before asking for a credential: the username POST to `/login`, the passkey page on `login.microsoft.com` whose "Sign in another way" returns to `/reprocess?ctx=...`, the account picker's "Forget". Each of those lands back on `login.microsoftonline.com` carrying neither a `redirect_uri` nor a `SAMLRequest`, and recording one would replace the only request the Bridge can replay with one it answers `unsupported_request`. Two rules keep the Application's request in place:
+
+- A navigation the identity provider issued itself is not recorded. The listener reads who started it (`initiator` in Chromium, an origin; `originUrl` in Gecko, a URL) and drops it when that is any of the generated identity-provider origins. Neither engine changes this value across a redirect chain, so a redirect from the Application still reads as the Application's.
+- A later hop of a request already recorded is not recorded. Every hop of a redirect chain fires its own `onBeforeRequest` with the same `requestId`, in both engines, and the Application's request is the first hop; where Entra sends it next is Entra's business.
+
+A request from outside the provider with a new ID replaces the capture: that is the Application starting a new sign-in in the same tab. A missing initiator (a typed or bookmarked URL) and Chromium's opaque `"null"` both count as outside.
 
 `storage.session` rather than a module-level `Map`, because the Chromium MV3 service worker can be evicted between the navigation and the click.
 
@@ -27,7 +34,7 @@ No `default_popup` in either manifest, because setting one stops `action.onClick
 On click:
 
 1. Ignore the click if a Handoff is already in flight for this tab.
-2. Check the active tab's origin against the generated entry origins. A mismatch is the "wrong page" state.
+2. Check the active tab's origin against the generated identity-provider origins: the entry origins plus the interior origins Entra moves the user through, which today adds `login.microsoft.com` for the passkey page. A mismatch is the "wrong page" state. The check is about where the user is, not where the request came from; the capture below is what gets replayed, whichever provider page the tab has reached since.
 3. Read the capture for this tab, bounded to ten minutes. Anything older is ignored, so an attempt abandoned an hour ago never replays.
 4. `connectNative` and send the request frame.
 5. On the terminal response, re-validate any returned URL (HTTPS, no embedded credentials), then navigate.

@@ -14,14 +14,15 @@ The Chromium build sets `"incognito": "split"`, which it must, because the defau
 
 A `webRequest.onBeforeRequest` listener with `{ urls: <generated entry origins>, types: ["main_frame"] }` and `["requestBody"]`.
 
-For a POST it reads `requestBody.formData`, decoding Chromium's `ArrayBuffer` values to strings and flattening repeated names into `[name, value]` pairs; if only `raw` is present it decodes and parses the body as urlencoded. For a GET it keeps the URL. The result is written to `storage.session` keyed by tab, with the capture time and the engine's request ID.
+For a POST it reads `requestBody.formData`, decoding Chromium's `ArrayBuffer` values to strings and flattening repeated names into `[name, value]` pairs; if only `raw` is present it decodes and parses the body as urlencoded. For a GET it keeps the URL. The result is written to `storage.session` keyed by tab, with the capture time.
 
-Not every main-frame load of an entry origin is the Application's Sign-in request. Once a saved account exists, Entra moves the user through pages of its own before asking for a credential: the username POST to `/login`, the passkey page on `login.microsoft.com` whose "Sign in another way" returns to `/reprocess?ctx=...`, the account picker's "Forget". Each of those lands back on `login.microsoftonline.com` carrying neither a `redirect_uri` nor a `SAMLRequest`, and recording one would replace the only request the Bridge can replay with one it answers `unsupported_request`. Two rules keep the Application's request in place:
+Not every main-frame load of an entry origin is the Application's Sign-in request. Once a saved account exists, Entra moves the user through pages of its own before asking for a credential: the username POST to `/login`, the passkey page on `login.microsoft.com` whose "Sign in another way" returns to `/reprocess?ctx=...`, the account picker's "Forget". Each of those lands back on `login.microsoftonline.com` carrying neither a `redirect_uri` nor a `SAMLRequest`, and recording one would replace the only request the Bridge can replay with one it answers `unsupported_request`.
 
-- A navigation the identity provider issued itself is not recorded. The listener reads who started it (`initiator` in Chromium, an origin; `originUrl` in Gecko, a URL) and drops it when that is any of the generated identity-provider origins. Neither engine changes this value across a redirect chain, so a redirect from the Application still reads as the Application's.
-- A later hop of a request already recorded is not recorded. Every hop of a redirect chain fires its own `onBeforeRequest` with the same `requestId`, in both engines, and the Application's request is the first hop; where Entra sends it next is Entra's business.
+So a load is recorded only when it carries one of the generated Sign-in request markers, `redirect_uri` or `SAMLRequest`, in its query or its form fields. Field names only: a marker in a path segment or inside another field's value does not count. The markers come from the same data file as the origins and name the fields the Entra adapter builds its plan from, so a load without any of them is one the Bridge would refuse anyway, and a load with one replaces the capture whatever brought it there.
 
-A request from outside the provider with a new ID replaces the capture: that is the Application starting a new sign-in in the same tab. A missing initiator (a typed or bookmarked URL) and Chromium's opaque `"null"` both count as outside.
+The decision is made on the request's content and not on who issued it or which redirect chain delivered it, on purpose. An Application whose Callback handler answers with a fresh authorization (a retry, a step-up, a second resource) produces a navigation whose initiator is still Entra and, across a redirect chain, whose `requestId` is the one the previous authorization used. Both engines keep those values stable through redirects, so neither can tell that navigation from Entra's own `/reprocess`. The fresh authorization has to win, because the previous one's `state` and nonce are already spent.
+
+The Extension still does not judge replayability; a marker-bearing request the adapter cannot plan for arrives as `unsupported_request` and is explained by that copy. The spike's path heuristic, which guessed from a `/saml2` path that the capture had been missed, is not carried forward.
 
 `storage.session` rather than a module-level `Map`, because the Chromium MV3 service worker can be evicted between the navigation and the click.
 
@@ -42,8 +43,6 @@ On click:
 Handoff claims live in `storage.session`. The background instance also tracks the claims it acquired, which never expire while that instance is waiting for the Bridge. After a background restart, a click may replace an inherited claim once its `startedAt` is more than thirty minutes old. This gives an abandoned claim a recovery path while allowing time for MFA or a password change before an inherited claim is replaced. It does not time out the native-messaging exchange or extend the capture's ten-minute lifetime: an expired capture still sends the user back to the Application's login page. Finishing a Handoff or closing its tab releases the claim; navigation only clears the action state.
 
 The capture's `storage.session` key is deleted only on a terminal success. On any failure it survives, so the popup's Try again button replays the same Sign-in request without sending the user back through the Application's login page. That is deliberately the opposite of the Relay page's consume-once rule: replaying a Sign-in request starts a fresh authentication, while resubmitting an assertion is a replay of a credential.
-
-The spike's path heuristic, which guessed from a `/saml2` path that the capture had been missed, is not carried forward. That judgment belongs to the adapter and arrives as `unsupported_request`.
 
 ## Delivering the Callback
 

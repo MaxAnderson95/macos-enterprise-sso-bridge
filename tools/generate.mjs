@@ -46,13 +46,30 @@ export const entryOriginMatchPatterns = entryOrigins.map((origin) => `${origin}/
  * origins plus the interior ones the provider moves the user through after a Sign-in
  * request has entered (Entra's passkey page lives on a second host). No Sign-in
  * request starts at an interior origin, so the Bridge and the listener filter never
- * see this list; the click-time check does, and so does the rule that tells the
- * provider's own navigations from the Application's.
+ * see this list; only the click-time check does.
  */
 export const identityProviderOrigins = [
   ...entryOrigins,
   ...readOrigins("interiorOrigins", { allowEmpty: true }),
 ];
+
+/**
+ * The query or form field names whose presence makes a navigation to an entry origin
+ * the Application's Sign-in request rather than a step the provider issued inside one.
+ * The same names the provider's adapter builds its plan from, so a request without
+ * any of them is one the Bridge would answer `unsupported_request` anyway.
+ */
+export const signInRequestMarkers = (() => {
+  const markers = data.signInRequestMarkers;
+  if (
+    !Array.isArray(markers) ||
+    markers.length === 0 ||
+    markers.some((marker) => typeof marker !== "string" || marker === "")
+  ) {
+    throw new Error(`${dataFile}: signInRequestMarkers must be a non-empty array of names`);
+  }
+  return markers;
+})();
 
 // swift-format's TrailingComma rule wants the last element to carry a comma only in a
 // literal it considers multiline, which a one-origin literal is not.
@@ -103,9 +120,15 @@ function typeScriptSource() {
     "/**",
     " * Bare origins that are the identity provider: where a Sign-in request starts, plus",
     " * where the provider sends the user mid sign-in. For the click-time check on the",
-    " * active tab, and for telling the provider's own navigations from the Application's.",
+    " * active tab.",
     " */",
     tsArray("identityProviderOrigins", identityProviderOrigins),
+    "",
+    "/**",
+    " * Field names that mark a navigation to an entry origin as the Application's Sign-in",
+    " * request, in the query or the form body. The adapter plans from the same names.",
+    " */",
+    tsArray("signInRequestMarkers", signInRequestMarkers),
     "",
   ].join("\n");
 }

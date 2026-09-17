@@ -2,7 +2,7 @@
 // Bridge replays. Pure functions over values: the listener registration lives in
 // background.ts, so every normalization rule here is testable without a browser.
 
-import { identityProviderOrigins } from "./generated/entryOrigins";
+import { identityProviderOrigins, signInRequestMarkers } from "./generated/entryOrigins";
 import type { FormField, SignInRequest } from "./protocol";
 
 /**
@@ -11,17 +11,10 @@ import type { FormField, SignInRequest } from "./protocol";
  * satisfies it structurally. `formData` values are `string | ArrayBuffer` because
  * Chromium hands back an `ArrayBuffer` for any value that is not valid UTF-8 and for
  * every multipart value, while Gecko always decodes to a string.
- *
- * Who started the navigation arrives under two names: Chromium's `initiator` is an
- * origin, Gecko's `originUrl` a full URL. Both are absent for a typed or bookmarked
- * URL, and both survive a redirect chain unchanged: Chromium documents it, and Gecko
- * clones the triggering principal as-is in `HttpBaseChannel::CloneLoadInfoForRedirect`.
  */
 export interface CapturedRequestDetails {
   url: string;
   method: string;
-  initiator?: string | undefined;
-  originUrl?: string | undefined;
   requestBody?:
     | {
         formData?: Record<string, (string | ArrayBuffer)[]> | undefined;
@@ -78,16 +71,22 @@ function fieldsFromRaw(raw: { bytes?: ArrayBuffer | undefined }[]): FormField[] 
  * Extension can replay. A GET keeps only its URL; a POST carries its form fields in
  * order. Anything other than GET or POST is not a sign-in navigation worth capturing.
  *
- * Nor is a navigation the identity provider issued itself. Submitting a username,
- * choosing "Sign in another way" from the passkey page, or forgetting an account all
- * land back on an entry origin as main-frame loads that carry no `redirect_uri` and no
- * `SAMLRequest`. They are steps inside the sign-in the Application already started,
- * and recording one would replace the only request the Bridge can replay.
+ * Nor is a load that carries none of the generated markers. Once a saved account
+ * exists, Entra moves the user through pages of its own before asking for a credential:
+ * the username POST to `/login`, "Sign in another way" back to `/reprocess?ctx=...`, a
+ * forgotten account. Each lands on the entry origin with no `redirect_uri` and no
+ * `SAMLRequest`, and recording one would replace the only request the Bridge can
+ * replay with one it would refuse. The markers are what decide, not who issued the
+ * navigation or which redirect chain delivered it: an Application whose Callback
+ * handler answers with a fresh authorization arrives with Entra as initiator and often
+ * the same request ID, and it has to win.
  */
 export function signInRequestFrom(details: CapturedRequestDetails): SignInRequest | null {
-  if (isIdentityProviderOrigin(details.originUrl ?? details.initiator)) {
-    return null;
-  }
+  const request = requestFrom(details);
+  return request !== null && carriesMarker(request) ? request : null;
+}
+
+function requestFrom(details: CapturedRequestDetails): SignInRequest | null {
   if (details.method === "GET") {
     return { url: details.url, method: "GET" };
   }
@@ -104,12 +103,27 @@ export function signInRequestFrom(details: CapturedRequestDetails): SignInReques
   return { url: details.url, method: "POST", fields: [] };
 }
 
+/** A marker in the query counts for either method; the HTTP-Redirect SAML binding uses it. */
+function carriesMarker(request: SignInRequest): boolean {
+  let query: URLSearchParams;
+  try {
+    query = new URL(request.url).searchParams;
+  } catch {
+    return false;
+  }
+  if (signInRequestMarkers.some((marker) => query.has(marker))) {
+    return true;
+  }
+  return (
+    request.method === "POST" &&
+    request.fields.some(([name]) => signInRequestMarkers.includes(name))
+  );
+}
+
 /**
- * Whether this URL is on the identity provider: an entry origin or one of the interior
- * origins it moves the user through. The click handler's "wrong page" check and the
- * capture's own-navigation check, compared as bare origins so a path or query cannot
- * widen the match. Chromium reports an opaque initiator as the string "null", which
- * does not parse and so counts as outside the provider, the same as a missing one.
+ * Whether a tab sitting at this URL is on the identity provider: an entry origin or one
+ * of the interior origins it moves the user through. The click handler's "wrong page"
+ * check, compared as bare origins so a path or query cannot widen the match.
  */
 export function isIdentityProviderOrigin(url: string | undefined): boolean {
   if (url === undefined) {

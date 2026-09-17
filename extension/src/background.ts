@@ -28,11 +28,7 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (request === null) {
       return;
     }
-    void session.recordCapture(
-      details.tabId,
-      { request, requestId: details.requestId },
-      Date.now(),
-    );
+    void session.recordCapture(details.tabId, request, Date.now());
   },
   { urls: entryOriginMatchPatterns, types: ["main_frame"] },
   ["requestBody"],

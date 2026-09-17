@@ -6,9 +6,15 @@ export const entryOriginMatchPatterns = ["https://login.microsoftonline.com/*"];
 /**
  * Bare origins that are the identity provider: where a Sign-in request starts, plus
  * where the provider sends the user mid sign-in. For the click-time check on the
- * active tab, and for telling the provider's own navigations from the Application's.
+ * active tab.
  */
 export const identityProviderOrigins = [
   "https://login.microsoftonline.com",
   "https://login.microsoft.com",
 ];
+
+/**
+ * Field names that mark a navigation to an entry origin as the Application's Sign-in
+ * request, in the query or the form body. The adapter plans from the same names.
+ */
+export const signInRequestMarkers = ["redirect_uri", "SAMLRequest"];

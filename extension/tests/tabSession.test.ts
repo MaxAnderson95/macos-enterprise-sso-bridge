@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { captureMaxAgeMs, tabSession } from "../src/tabSession";
-import type { Capture, PostCallback, SessionArea } from "../src/tabSession";
+import type { PostCallback, SessionArea } from "../src/tabSession";
 import type { SignInRequest } from "../src/protocol";
 import { fakeSessionArea } from "./helpers/fakeSessionArea";
 
@@ -9,8 +9,6 @@ const request: SignInRequest = {
   method: "POST",
   fields: [["SAMLRequest", "fZJNb9sw"]],
 };
-
-const capture: Capture = { request, requestId: "1" };
 
 /**
  * The same stand-in, with a real delay inside every read. The browser's storage area
@@ -51,7 +49,7 @@ describe("tabSession", () => {
   it("returns the capture it recorded for that tab and no other", async () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
-    await session.recordCapture(7, capture, now);
+    await session.recordCapture(7, request, now);
 
     await expect(session.readCapture(7, now)).resolves.toEqual(request);
     await expect(session.readCapture(8, now)).resolves.toBeNull();
@@ -61,43 +59,10 @@ describe("tabSession", () => {
   it("ignores a capture older than ten minutes", async () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
-    await session.recordCapture(7, capture, now);
+    await session.recordCapture(7, request, now);
 
     await expect(session.readCapture(7, now + captureMaxAgeMs)).resolves.toEqual(request);
     await expect(session.readCapture(7, now + captureMaxAgeMs + 1)).resolves.toBeNull();
-  });
-
-  // Entra answers the Application's request with a redirect to a URL of its own, and
-  // that hop reaches the listener too, under the same request ID. The first hop is the
-  // one the Bridge can replay. A later request from the Application is a new sign-in.
-  it("keeps the first hop of a redirected request and takes a new request", async () => {
-    const { area } = slowSessionArea();
-    const session = tabSession(area);
-    const redirected: Capture = {
-      request: {
-        url: "https://login.microsoftonline.com/tenant/reprocess?ctx=opaque",
-        method: "GET",
-      },
-      requestId: "1",
-    };
-    const fresh: Capture = {
-      request: {
-        url: "https://login.microsoftonline.com/tenant/saml2",
-        method: "POST",
-        fields: [],
-      },
-      requestId: "2",
-    };
-
-    // Both hops arrive before either read has answered, as they do in the browser.
-    await Promise.all([
-      session.recordCapture(7, capture, now),
-      session.recordCapture(7, redirected, now + 1),
-    ]);
-    await expect(session.readCapture(7, now + 1)).resolves.toEqual(request);
-
-    await session.recordCapture(7, fresh, now + 2);
-    await expect(session.readCapture(7, now + 2)).resolves.toEqual(fresh.request);
   });
 
   it("grants the claim once until the Handoff finishes", async () => {
@@ -119,7 +84,7 @@ describe("tabSession", () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
 
-    await session.recordCapture(7, capture, now);
+    await session.recordCapture(7, request, now);
     await session.claimHandoff(7, now);
     await session.finishHandoff(7, "failure");
     await expect(session.readCapture(7, now)).resolves.toEqual(request);
@@ -147,7 +112,7 @@ describe("tabSession", () => {
     const thirtyMinutesLater = now + 30 * 60 * 1000;
 
     await expect(afterEviction.claimHandoff(7, thirtyMinutesLater)).resolves.toBe(false);
-    await afterEviction.recordCapture(7, capture, thirtyMinutesLater);
+    await afterEviction.recordCapture(7, request, thirtyMinutesLater);
     const claims = await Promise.all([
       afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
       afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
@@ -170,7 +135,7 @@ describe("tabSession", () => {
     const { area, items } = fakeSessionArea();
     const session = tabSession(area);
 
-    await session.recordCapture(7, capture, now);
+    await session.recordCapture(7, request, now);
     await session.claimHandoff(7, now);
     await session.storeCallback(7, callback);
     await session.recordState(7, "noReply");
@@ -198,7 +163,7 @@ describe("tabSession", () => {
   it("finds the capture and the live claim from a fresh instance", async () => {
     const { area } = fakeSessionArea();
 
-    await tabSession(area).recordCapture(7, capture, now);
+    await tabSession(area).recordCapture(7, request, now);
     await expect(tabSession(area).claimHandoff(7, now)).resolves.toBe(true);
 
     const afterEviction = tabSession(area);
@@ -249,7 +214,7 @@ describe("tabSession", () => {
 
   it("ignores a stored value it cannot read as a capture or a callback", async () => {
     const { area } = fakeSessionArea();
-    await area.set({ "capture:7": { request, capturedAt: now }, "callback:7": "nonsense" });
+    await area.set({ "capture:7": "nonsense", "callback:7": "nonsense" });
 
     await expect(tabSession(area).readCapture(7, now)).resolves.toBeNull();
     await expect(tabSession(area).takeCallback(7)).resolves.toBeNull();

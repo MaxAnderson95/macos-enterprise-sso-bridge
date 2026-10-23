@@ -1,10 +1,10 @@
-// Registers a locally built Bridge with Helium and Zen for development.
+// Registers a locally built Bridge with Helium, Ardia, and Zen for development.
 // Usage: node tools/install-dev-native-host.mjs [--executable PATH] [--remove]
 //
-// These are the user-level manifests, which both engines read before the system-wide
+// These are the user-level manifests, which every browser reads before the system-wide
 // ones. The release .pkg installs the system-wide pair under /Library instead, so a
 // developer's build shadows an installed one without fighting it, and removing these
-// two files restores the installed Bridge.
+// files restores the installed Bridge.
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -25,14 +25,21 @@ const defaultExecutable = join(
 
 // Paths confirmed in docs/research/extension-distribution.md: Helium's product
 // directory is the literal net.imput.helium, and Gecko hardcodes Mozilla regardless
-// of fork branding, so Zen has no path of its own.
+// of fork branding, so Zen has no path of its own. Ardia's user data directory is the
+// Chromium folder inside its own, per docs/spec/install.md.
+const support = join(homedir(), "Library", "Application Support");
+const chromiumCallers = { allowed_origins: [`chrome-extension://${chromiumExtensionId}/`] };
 const engines = {
   helium: {
-    directory: join(homedir(), "Library", "Application Support", "net.imput.helium", "NativeMessagingHosts"),
-    allowed: { allowed_origins: [`chrome-extension://${chromiumExtensionId}/`] },
+    directory: join(support, "net.imput.helium", "NativeMessagingHosts"),
+    allowed: chromiumCallers,
+  },
+  ardia: {
+    directory: join(support, "com.ardia.browser", "Chromium", "NativeMessagingHosts"),
+    allowed: chromiumCallers,
   },
   zen: {
-    directory: join(homedir(), "Library", "Application Support", "Mozilla", "NativeMessagingHosts"),
+    directory: join(support, "Mozilla", "NativeMessagingHosts"),
     allowed: { allowed_extensions: [geckoAddonId] },
   },
 };

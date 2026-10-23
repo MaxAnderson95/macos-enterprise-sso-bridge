@@ -2,24 +2,24 @@
 
 The manual end-to-end pass. Run it before tagging a release, and after any change to capture, recognition, or the Relay page.
 
-Nothing here can run in CI: it needs Helium, Zen, a real Entra tenant, an Application, and a Mac whose Enterprise SSO extension allows the Bridge. Do not commit results, which would carry tenant and Application names.
+Nothing here can run in CI: it needs Helium, Ardia, Zen, a real Entra tenant, an Application, and a Mac whose Enterprise SSO extension allows the Bridge. Do not commit results, which would carry tenant and Application names.
 
 ## Before starting
 
 - [ ] The installed `.pkg` version, both extension versions, and the tag under test all match.
 - [ ] The Enterprise SSO configuration profile's `AppAllowList` includes `tech.maxanderson.enterprise-sso-bridge`.
-- [ ] Private-browsing access is granted to the extension in both browsers.
+- [ ] Private-browsing access is granted to the extension in every browser.
 - [ ] `log stream --predicate 'subsystem == "tech.maxanderson.enterprise-sso-bridge"'` is running, so each run's phase lines are visible.
 
 ## The matrix
 
 Each cell is one Handoff, started from the Application's own login page: click the toolbar action on the provider page, approve, and expect the original tab to land signed in.
 
-| Callback shape | Helium, normal | Helium, private | Zen, normal | Zen, private |
-| --- | --- | --- | --- | --- |
-| OIDC, GET redirect | | | | |
-| OIDC, `form_post` | | | | |
-| SAML, POST | | | | |
+| Callback shape | Helium, normal | Helium, private | Ardia, normal | Ardia, private | Zen, normal | Zen, private |
+| --- | --- | --- | --- | --- | --- | --- |
+| OIDC, GET redirect | | | | | | |
+| OIDC, `form_post` | | | | | | |
+| SAML, POST | | | | | | |
 
 For every cell, check all of:
 
@@ -34,7 +34,7 @@ For the two POST rows, also record which body-extraction path the Bridge used, f
 
 ## Failure and edge paths
 
-Run these once per release, in either browser unless stated.
+Run these once per release, in any browser unless stated.
 
 - [ ] **Decline.** Click Cancel on the Approval. The tab shows no error state; the title reads "Sign-in cancelled. Click to start again."
 - [ ] **Close mid-navigation.** Approve, then close the Bridge window while Entra is loading. Same cancelled treatment, and the log names the phase.

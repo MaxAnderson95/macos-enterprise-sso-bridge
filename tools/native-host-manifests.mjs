@@ -4,9 +4,10 @@
 // These are the /Library pair. tools/install-dev-native-host.mjs writes the ~/Library
 // pair, which both engines read first, so a development build shadows an installed one.
 //
-// Helium's Chromium directory is the unbranded literal rather than anything derived
-// from a product name, and Gecko hardcodes Mozilla regardless of fork branding; both
-// are established in docs/research/extension-distribution.md.
+// The system-wide Chromium directory is the unbranded literal rather than anything
+// derived from a product name, so Helium and Ardia both read it, and Gecko hardcodes
+// Mozilla regardless of fork branding. Helium and Zen are established in
+// docs/research/extension-distribution.md, Ardia in docs/spec/install.md.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

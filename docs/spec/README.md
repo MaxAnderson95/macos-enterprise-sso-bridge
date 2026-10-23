@@ -21,6 +21,6 @@ What v1 is, in enough detail to build it. Every decision here was settled on a t
 
 ## Scope
 
-v1 supports Entra as the only identity provider, behind an adapter seam that a second provider could fill without touching the Extension. It ships two Allowed browsers, Helium and Zen, and treats that pair as the v1 set rather than as the design: another Chromium or Gecko browser joins by adding its designated requirement to the table plus whatever its install story needs.
+v1 supports Entra as the only identity provider, behind an adapter seam that a second provider could fill without touching the Extension. It shipped two Allowed browsers, Helium and Zen, and treated that pair as the v1 set rather than as the design: another Chromium or Gecko browser joins by adding its designated requirement to the table plus whatever its install story needs. Ardia joined that way, as a third entry and a second user data directory for the Chromium install script.
 
 Out of scope for v1, each ruled out deliberately: Developer ID signing and notarization, Microsoft BrowserCore integration, copying cookies or keys between browsers, Safari, Windows, Linux, a resident background process, and any identity provider other than Entra.

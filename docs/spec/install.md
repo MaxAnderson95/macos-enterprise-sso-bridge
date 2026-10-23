@@ -27,17 +27,32 @@ Both manifest directories are root-writable and system-wide, so no postinstall s
 
 Helium's system-wide Chromium path is the unbranded literal `/Library/Application Support/Chromium/NativeMessagingHosts`, not a product-name-derived path (`chrome/common/chrome_paths.cc:453-478`). Its `scan-chrome-native-messaging-hosts.patch` adds two Google Chrome fallback directories to the search order; v1 does not write to them. A branded Chromium joining the Allowed browser set later would add that path.
 
+Ardia reads the same unbranded system-wide directory. Its engine is unbranded Chromium 155 and leaves `chrome_paths.cc` unpatched, and its own feature-parity notes name `<user data dir>/NativeMessagingHosts` and `/Library/Application Support/Chromium/NativeMessagingHosts` as the two places `connectNative` looks (`mantrakp04/ardia@v0.2.39:docs/dia-feature-parity.md:507`). Ardia's `ACNativeMessaging.mm` writes password-manager manifests into the user-level directory at launch but only touches names it manages, so it leaves the Bridge's alone.
+
+## Ardia's user data directory
+
+Ardia is a React Native shell that hosts Chromium's framework in its own main process. `ArdiaCoreHost.mm` passes `--user-data-dir` pointing at `~/Library/Application Support/com.ardia.browser/Chromium`, or at `$ARDIA_DATA_DIR/Chromium` for an isolated instance (`mantrakp04/ardia@v0.2.39:packages/ardiacore/ios/ArdiaCoreHost.mm:75-78`, `:535-547`), and `ac_main_delegate.cc` overrides `DIR_USER_DATA` with it. Chromium derives `DIR_USER_EXTERNAL_EXTENSIONS` as `DIR_USER_DATA` plus `External Extensions` on macOS (`chrome/common/chrome_paths.cc:415-424`), so the external-prefs file and the user-level native-messaging manifest both live under that `Chromium` folder rather than under `com.ardia.browser` itself.
+
+Because Chromium runs in Ardia's main process, the browser process that spawns the Bridge is `/Applications/Ardia.app/Contents/MacOS/Ardia`, signed `com.ardia.browser` by Team U5L5T3NGVV. Ardia's notes record the same parent for password-manager hosts. Its designated requirement is Xcode's default, which also admits a Mac App Store signature for the same bundle identifier.
+
 ## Installing the Chromium extension
 
-`install-chromium-extension.sh`, committed to the repo and published as a release asset. It needs no root: it places the downloaded `.crx` under `~/Library/Application Support/`, then writes the external-prefs JSON to `~/Library/Application Support/net.imput.helium/External Extensions/<extension-id>.json` naming that resolved absolute path with a matching `external_version`.
+`install-chromium-extension.sh`, committed to the repo and published as a release asset. It needs no root: it places the downloaded `.crx` under `~/Library/Application Support/`, then writes the external-prefs JSON naming that resolved absolute path with a matching `external_version` into each Chromium browser's user data directory:
+
+- `~/Library/Application Support/net.imput.helium/External Extensions/<extension-id>.json`
+- `~/Library/Application Support/com.ardia.browser/Chromium/External Extensions/<extension-id>.json`
+
+It writes both unconditionally. A browser that is not installed never reads its file, and probing for installed apps would add a failure mode without changing what an installed browser sees. Ardia's legacy-data migration decides whether a data directory is in use from `session.json` or `Chromium/Local State` (`mantrakp04/ardia@v0.2.39:packages/sync/ios/Core/LegacyMigration.swift:735`), not from the directory's existence, so the pre-created folder does not disturb Ardia's first launch.
 
 The script exists because that JSON requires an absolute path and JSON has no variable expansion, so a committed file would otherwise hardcode one machine's home directory. It is idempotent, and it is the update path as well as the install path.
 
-A user-level native-messaging registration takes precedence over the system-wide release registration. The script removes Helium's user-level manifest only when its name and development-build description match the Bridge, its target is an absolute path that no longer exists, and neither the manifest nor the target is a symlink. Other user-level registrations remain in place with a warning.
+A user-level native-messaging registration takes precedence over the system-wide release registration. The script checks each browser's user-level manifest and removes one only when its name and development-build description match the Bridge, its target is an absolute path that no longer exists, and neither the manifest nor the target is a symlink. Other user-level registrations remain in place with a warning.
 
 Helium performs the install at next launch and the user accepts it once. That click is unavoidable: `prompt_for_external_extensions` defaults enabled on macOS, and `ExtensionRegistrar` returns `DISABLE_EXTERNAL_EXTENSION` for any external install that has not been acknowledged. The acceptance UI is `MENU_ALERT`, a three-dot menu item rather than a bubble (`external_install_manager.cc:111-120`).
 
 This was verified empirically against an isolated user-data-dir: a locally packed CRX referenced by an external-prefs JSON installed and unpacked into the profile with `location=2` (`EXTERNAL_PREF`) and `disable_reasons=[8192]`, which is `1 << 13`, `DISABLE_EXTERNAL_EXTENSION` (`extensions/browser/disable_reason.h:42`). That contradicts Google's documentation, which says local-CRX external installs were blocked on macOS in Chrome 44. No such enforcement exists in trunk; the modern equivalent is `InstallVerifier`, which is gated on `GOOGLE_CHROME_BRANDING` and therefore compiled out of Helium (`install_verifier.cc:68-75`).
+
+Ardia 0.2.39 behaves the same way at the engine level: an isolated instance (`ARDIA_DATA_DIR` set to a scratch directory) given the release `.crx` through `External Extensions` unpacked it into `Default/Extensions` with `location=2` and `disable_reasons=[8192]`. Ardia has no Chrome app menu and does not handle Chromium's `GlobalError` menu items, so the three-dot acceptance item never appears. The user turns the extension on from Settings, Extensions instead: that toggle calls `ac_extensions_set_enabled` (`mantrakp04/ardia@v0.2.39:engine/chromium/src/chrome/browser/ardia/ac_extensions.cc:415`), and `ExternalInstallManager::OnExtensionLoaded` treats the resulting load as the acknowledgement (`external_install_manager.cc:220-228`).
 
 ## Installing the Gecko extension
 
@@ -59,7 +74,7 @@ Sparkle was evaluated and rejected. It does work for an ad-hoc signed app, since
 
 The GUI install path leads, with the unsigned-package Gatekeeper refusal explained rather than hidden: roughly seven actions on a fresh Mac, because macOS 15 removed the Control-click override and the recovery path is System Settings, Privacy and Security, Open Anyway. `sudo installer -pkg ... -target /` appears as a note for anyone who prefers it.
 
-Also covered: enabling private-browsing access for the extension in both browsers, and a full uninstall section listing every path, `pkgutil --forget` for the receipt, removal of both extensions, and explicitly restoring `xpinstall.signatures.required` to `true`, since that pref is a security-relevant change that would otherwise outlive the tool.
+Also covered: enabling private-browsing access for the extension in every browser, and a full uninstall section listing every path, `pkgutil --forget` for the receipt, removal of both extensions, and explicitly restoring `xpinstall.signatures.required` to `true`, since that pref is a security-relevant change that would otherwise outlive the tool.
 
 ## MDM setup
 

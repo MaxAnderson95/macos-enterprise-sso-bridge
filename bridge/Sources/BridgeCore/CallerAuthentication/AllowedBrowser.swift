@@ -38,5 +38,21 @@ public struct AllowedBrowser: Sendable, Equatable {
       """
   )
 
-  public static let all: [AllowedBrowser] = [helium, zen]
+  /// Xcode's default requirement, so unlike the two above it also admits a Mac App Store
+  /// signature. Apple registers a bundle identifier to one team, so that alternative
+  /// still names only Ardia.
+  public static let ardia = AllowedBrowser(
+    displayName: "Ardia",
+    bundleIdentifier: "com.ardia.browser",
+    teamIdentifier: "U5L5T3NGVV",
+    requirement: """
+      anchor apple generic and identifier "com.ardia.browser" and \
+      (certificate leaf[field.1.2.840.113635.100.6.1.9] /* exists */ or \
+      certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and \
+      certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and \
+      certificate leaf[subject.OU] = U5L5T3NGVV)
+      """
+  )
+
+  public static let all: [AllowedBrowser] = [helium, zen, ardia]
 }

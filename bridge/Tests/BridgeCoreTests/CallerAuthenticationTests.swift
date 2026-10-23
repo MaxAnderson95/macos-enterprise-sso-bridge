@@ -52,10 +52,12 @@ struct CallerAuthenticationTests {
     #expect(browser.requirement.contains("anchor apple generic"))
   }
 
-  @Test("The v1 table is Helium and Zen")
+  @Test("The table is Helium, Zen, and Ardia")
   func tableContents() {
     #expect(
-      AllowedBrowser.all.map(\.bundleIdentifier) == ["net.imput.helium", "app.zen-browser.zen"]
+      AllowedBrowser.all.map(\.bundleIdentifier) == [
+        "net.imput.helium", "app.zen-browser.zen", "com.ardia.browser",
+      ]
     )
   }
 

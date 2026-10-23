@@ -8,11 +8,12 @@ Without a working Enterprise SSO integration, a browser may be unable to use the
 
 - macOS 26 or newer, on Apple silicon.
 - A Mac enrolled with an Enterprise SSO configuration profile for Microsoft Entra, whose `AppAllowList` includes this app. See [MDM setup](#mdm-setup); without it the Bridge is just a second browser.
-- One of the supported browsers. The Bridge accepts only these two as callers, checked against their code-signing identities:
+- One of the supported browsers. The Bridge accepts only these three as callers, checked against their code-signing identities:
 
 | Browser | Engine | Extension package |
 | --- | --- | --- |
 | [Helium](https://helium.computer) | Chromium | `.crx`, installed by the script below |
+| [Ardia](https://ardia.dev) | Chromium | `.crx`, installed by the script below |
 | [Zen](https://zen-browser.app) | Gecko | `.xpi`, installed by hand |
 
 Entra is the only supported identity provider.
@@ -30,13 +31,13 @@ The package is not signed with an Apple Developer ID, so macOS refuses it on the
 3. Scroll to the Security section, where a line about the blocked package appears, and click Open Anyway.
 4. Authenticate, then double-click the package again and complete the installer.
 
-That installs `/Applications/Enterprise SSO Bridge.app` and registers it with both browser engines. Nothing else runs: the package has no install scripts.
+That installs `/Applications/Enterprise SSO Bridge.app` and registers it with both browser engines, which covers all three browsers. Nothing else runs: the package has no install scripts.
 
 The dialogs on macOS 26 have not been checked step by step, so the wording above may not match exactly. If Open Anyway does not appear for the package, `sudo installer -pkg EnterpriseSSOBridge-<version>.pkg -target /` installs the same payload from the terminal. That path is untested against a freshly downloaded, quarantined package.
 
 You never launch the app yourself. Opening it shows a window explaining what it is and which version is installed, and quits when you dismiss it.
 
-### 2. The Helium extension
+### 2. The Helium and Ardia extension
 
 Run the script from the folder holding the `.crx`:
 
@@ -45,11 +46,16 @@ chmod +x install-chromium-extension.sh
 ./install-chromium-extension.sh
 ```
 
-It needs no root. It copies the package into `~/Library/Application Support/tech.maxanderson.enterprise-sso-bridge/` and points Helium at it from `~/Library/Application Support/net.imput.helium/External Extensions/`.
+It needs no root. It copies the package into `~/Library/Application Support/tech.maxanderson.enterprise-sso-bridge/` and points both Chromium browsers at it, Helium from `~/Library/Application Support/net.imput.helium/External Extensions/` and Ardia from `~/Library/Application Support/com.ardia.browser/Chromium/External Extensions/`. It writes both whether or not each browser is installed; a browser that is not installed never reads its file.
 
 The script also removes a user-level Bridge development registration when its target no longer exists, so it cannot hide the installed release. It preserves other user-level registrations and warns that they may override the release.
 
-Restart Helium. It offers the extension once, as an item in the three-dot menu rather than a popup, and you accept it there. Helium disables any externally installed extension until you do, so the toolbar action will not appear before that click.
+Both browsers install the extension disabled at next launch and keep it off until you accept it once, so the toolbar action will not appear before then:
+
+- **Helium:** restart it. It offers the extension as an item in the three-dot menu rather than a popup, and you accept it there.
+- **Ardia:** restart it, open Settings, then Extensions, and turn on Enterprise SSO Bridge. Ardia shows no offer of its own. Its toolbar button may sit in the Extensions menu until you turn on Pin to toolbar in the extension's details.
+
+Each browser profile installs and accepts the extension separately.
 
 ### 3. The Zen extension
 
@@ -66,6 +72,7 @@ The pref stays `false` for as long as the add-on is installed. Turning signature
 The extension has no access to private windows until you grant it, and the sign-in it drives will not start there without it.
 
 - **Helium:** open `chrome://extensions`, click Details on Enterprise SSO Bridge, and turn on Allow in Incognito.
+- **Ardia:** open Settings, then Extensions, click Enterprise SSO Bridge, and turn on Allow in Incognito.
 - **Zen:** open `about:addons`, click Enterprise SSO Bridge, and set Run in Private Windows to Allow.
 
 ## MDM setup
@@ -90,7 +97,7 @@ The Bridge's window shows its installed version, and each request carries a prot
 
 Remove the extensions first, so restoring Zen's signature pref does not fight a still-installed add-on.
 
-1. In Helium, open `chrome://extensions` and remove Enterprise SSO Bridge. In Zen, open `about:addons` and remove it.
+1. In Helium, open `chrome://extensions` and remove Enterprise SSO Bridge. In Ardia, open Settings, then Extensions, click it, and choose Remove Extension. In Zen, open `about:addons` and remove it.
 2. In Zen's `about:config`, set `xpinstall.signatures.required` back to `true`. This one matters: leaving it off weakens add-on security for the whole profile, not just for this extension.
 3. Delete the files:
 
@@ -98,6 +105,7 @@ Remove the extensions first, so restoring Zen's signature pref does not fight a 
 sudo rm -rf "/Applications/Enterprise SSO Bridge.app"
 rm -rf "$HOME/Library/Application Support/tech.maxanderson.enterprise-sso-bridge"
 rm -f "$HOME/Library/Application Support/net.imput.helium/External Extensions/ddalcfdgiklpbglknegedadiaclfkncc.json"
+rm -f "$HOME/Library/Application Support/com.ardia.browser/Chromium/External Extensions/ddalcfdgiklpbglknegedadiaclfkncc.json"
 sudo rm -f "/Library/Application Support/Chromium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
 sudo rm -f "/Library/Application Support/Mozilla/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"
 sudo pkgutil --forget tech.maxanderson.enterprise-sso-bridge
@@ -138,7 +146,7 @@ Having that code in a browser fork is not enough. Microsoft's browser SSO operat
 The Bridge moves the Entra portion of a sign-in into an app that the admin can authorize:
 
 ```text
-Helium / Zen                 Bridge: WKWebView               Entra
+Helium / Ardia / Zen         Bridge: WKWebView               Entra
     |                              |                          |
     |--- original sign-in -------->|                          |
     |                        user approves                    |
@@ -241,7 +249,7 @@ For GET, the Extension navigates the original tab directly to the Callback URL. 
 
 ### Caller identity and Approval
 
-Microsoft's native-app allowlist authorizes the Bridge to use Enterprise SSO. The Bridge separately controls which browsers may ask it to perform a Handoff. Before reading stdin or creating an `NSApplication`, it captures its parent's audit token through `task_name_for_pid` and `task_info(TASK_AUDIT_TOKEN)`, resolves the running code with `SecCodeCopyGuestWithAttributes`, and checks the designated code-signing requirement for Helium or Zen with `SecCodeCheckValidityWithErrors`. Those requirements include the browser's bundle identifier, Team ID, and Apple signing chain.
+Microsoft's native-app allowlist authorizes the Bridge to use Enterprise SSO. The Bridge separately controls which browsers may ask it to perform a Handoff. Before reading stdin or creating an `NSApplication`, it captures its parent's audit token through `task_name_for_pid` and `task_info(TASK_AUDIT_TOKEN)`, resolves the running code with `SecCodeCopyGuestWithAttributes`, and checks the designated code-signing requirement for Helium, Ardia, or Zen with `SecCodeCheckValidityWithErrors`. Those requirements include the browser's bundle identifier, Team ID, and Apple signing chain.
 
 The audit token pins a particular process incarnation, avoiding a bare-PID reuse race. This authenticates the parent process; anonymous pipes do not expose an authenticated peer identity, and an Extension ID passed in command-line arguments would be forgeable. Code executing inside an accepted browser is still inside that browser's identity. That is why every Handoff also requires Approval in the Bridge's own native window before any authentication begins. The guarantees and accepted gaps are recorded in [caller authentication](docs/adr/0001-caller-authentication-by-parent-audit-token.md) and [per-Handoff Approval](docs/adr/0002-user-approval-before-every-handoff.md).
 

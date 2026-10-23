@@ -8,13 +8,13 @@ The native-messaging manifest names a world-readable absolute path, so any local
 
 `getppid()`, then `task_name_for_pid` and `task_info(TASK_AUDIT_TOKEN)`, then `SecCodeCopyGuestWithAttributes(NULL, {kSecGuestAttributeAudit: token}, ...)`.
 
-Both engines `posix_spawn` the Bridge directly from the browser's main process, so the parent is the browser. The audit token's pidversion pins one incarnation of that PID, which closes the reuse window the bare-PID path leaves open. If `task_name_for_pid` fails for any reason, the Bridge rejects the Caller. There is no silent downgrade to `kSecGuestAttributePid`.
+Both engines `posix_spawn` the Bridge directly from the browser's main process, so the parent is the browser. Ardia hosts Chromium's framework inside its own app process, so its parent is `Ardia.app` itself (`docs/spec/install.md`). The audit token's pidversion pins one incarnation of that PID, which closes the reuse window the bare-PID path leaves open. If `task_name_for_pid` fails for any reason, the Bridge rejects the Caller. There is no silent downgrade to `kSecGuestAttributePid`.
 
 ## The check
 
-`SecCodeCheckValidityWithErrors` against the verbatim designated requirement of each Allowed browser, as `codesign -d -r-` reports it: identifier, `anchor apple generic`, the Developer ID intermediate marker, and the leaf Team OU.
+`SecCodeCheckValidityWithErrors` against the verbatim designated requirement of each Allowed browser, as `codesign -d -r-` reports it: identifier, `anchor apple generic`, the Developer ID intermediate marker, and the leaf Team OU. Ardia's requirement is Xcode's default, which accepts the Mac App Store leaf marker as an alternative to the Developer ID and Team OU pair; it is kept verbatim like the others.
 
-The v1 set is Helium (`net.imput.helium`, Team S4Q33XPHB4) and Zen (`app.zen-browser.zen`, Team 9V5K9TP787). A match against any entry passes; no match, or no resolvable guest, rejects.
+The set is Helium (`net.imput.helium`, Team S4Q33XPHB4), Zen (`app.zen-browser.zen`, Team 9V5K9TP787), and Ardia (`com.ardia.browser`, Team U5L5T3NGVV). A match against any entry passes; no match, or no resolvable guest, rejects.
 
 ## Where it runs
 

@@ -45,6 +45,9 @@ const headerFields = protobufFields(header);
 const proof = protobufFields(headerFields.get(2)!);
 const signedHeaderData = headerFields.get(10000)!;
 
+// Helium's and Ardia's user data directories, relative to Application Support.
+const chromiumUserDataDirs = ["net.imput.helium", "com.ardia.browser/Chromium"];
+
 describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
   it.each(["missing development", "live development", "unknown", "malformed", "absent"])(
     "handles a %s user-level registration",
@@ -52,9 +55,8 @@ describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
       const home = mkdtempSync(join(tmpdir(), "bridge-install-"));
       try {
         const support = join(home, "Library/Application Support");
-        const manifestPath = join(
-          support,
-          "net.imput.helium/NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json",
+        const manifestPaths = chromiumUserDataDirs.map((dir) =>
+          join(support, dir, "NativeMessagingHosts/tech.maxanderson.enterprise_sso_bridge.json"),
         );
         const target = join(home, "development bridge");
         if (scenario === "live development" || scenario === "missing development") {
@@ -67,19 +69,22 @@ describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
           });
           if (scenario === "missing development") rmSync(target);
         } else if (scenario !== "absent") {
-          mkdirSync(dirname(manifestPath), { recursive: true });
-          writeFileSync(
-            manifestPath,
-            scenario === "malformed"
-              ? "invalid json"
-              : JSON.stringify({
-                  name: "tech.maxanderson.enterprise_sso_bridge",
-                  description: "Custom registration",
-                  path: target,
-                }),
-          );
+          for (const manifestPath of manifestPaths) {
+            mkdirSync(dirname(manifestPath), { recursive: true });
+            writeFileSync(
+              manifestPath,
+              scenario === "malformed"
+                ? "invalid json"
+                : JSON.stringify({
+                    name: "tech.maxanderson.enterprise_sso_bridge",
+                    description: "Custom registration",
+                    path: target,
+                  }),
+            );
+          }
         }
-        const manifest = scenario === "absent" ? undefined : readFileSync(manifestPath, "utf8");
+        const manifests =
+          scenario === "absent" ? [] : manifestPaths.map((path) => readFileSync(path, "utf8"));
         writeFileSync(
           join(home, "manifest.json"),
           JSON.stringify({
@@ -101,18 +106,24 @@ describe.skipIf(process.platform !== "darwin")("the Chromium installer", () => {
         const result = run();
         expect(result.status, result.stderr).toBe(0);
         if (scenario === "missing development" || scenario === "absent") {
-          expect(existsSync(manifestPath)).toBe(false);
+          for (const manifestPath of manifestPaths) {
+            expect(existsSync(manifestPath)).toBe(false);
+          }
           expect(result.stderr).toBe("");
         } else {
-          expect(readFileSync(manifestPath, "utf8")).toBe(manifest);
-          expect(result.stderr).toContain("may override the installed Bridge");
+          manifestPaths.forEach((manifestPath, index) => {
+            expect(readFileSync(manifestPath, "utf8")).toBe(manifests[index]);
+            expect(result.stderr).toContain(`may override the installed Bridge: ${manifestPath}`);
+          });
         }
         const id = deriveChromiumExtensionId(publicKeyDer.toString("base64"));
-        const preferences = JSON.parse(
-          readFileSync(join(support, `net.imput.helium/External Extensions/${id}.json`), "utf8"),
-        );
-        expect(preferences.external_version).toBe("0.1.0");
-        expect(readFileSync(preferences.external_crx)).toEqual(readFileSync(crxPath));
+        for (const dir of chromiumUserDataDirs) {
+          const preferences = JSON.parse(
+            readFileSync(join(support, dir, `External Extensions/${id}.json`), "utf8"),
+          );
+          expect(preferences.external_version).toBe("0.1.0");
+          expect(readFileSync(preferences.external_crx)).toEqual(readFileSync(crxPath));
+        }
         expect(run().status).toBe(0);
       } finally {
         rmSync(home, { recursive: true, force: true });

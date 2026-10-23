@@ -48,11 +48,11 @@ No coverage gate. A threshold on a project this size measures diligence in the w
 
 ## Local checks
 
-A GitHub Actions runner has no Helium, no Zen, no Entra tenant, and no Enterprise SSO extension, so it can prove rejection of a shell parent but never acceptance of a real browser, which is the half that matters.
+A GitHub Actions runner has no Helium, no Ardia, no Zen, no Entra tenant, and no Enterprise SSO extension, so it can prove rejection of a shell parent but never acceptance of a real browser, which is the half that matters.
 
 **Caller authentication, negative.** A shell script spawns the built `.app`'s executable directly, so the parent is the shell, and asserts a non-zero exit and empty stdout. This is ADR 0001's required test. The script keeps its assertions to exit code and stdout, since a shell script cannot observe whether a webview was instantiated.
 
-**End-to-end Handoff.** A checked-in manual checklist at `docs/testing/acceptance.md` covering two browsers, three Callback shapes (OIDC GET redirect, OIDC `form_post`, SAML POST), and normal versus private windows, with the expected observable at each step.
+**End-to-end Handoff.** A checked-in manual checklist at `docs/testing/acceptance.md` covering three browsers, three Callback shapes (OIDC GET redirect, OIDC `form_post`, SAML POST), and normal versus private windows, with the expected observable at each step.
 
 It runs before each release tag, and after any change to capture, recognition, or the Relay page. Per pull request was rejected as a rule that a one-person project will skip and then trust anyway. Browser automation against a live tenant was rejected for v1: neither engine's native messaging plus a real Entra login automates cheaply, and it would put tenant credentials in the loop.
 

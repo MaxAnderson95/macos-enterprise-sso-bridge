@@ -139,7 +139,7 @@ struct ApprovalPromptTests {
 
 /// ADR 0004's table, row by row. The Extension's trigger can only make the Bridge
 /// stricter: an automatic start to anywhere unlisted is answered without a window, and
-/// nothing but the derived destination skips the Approval.
+/// nothing but the bound destination skips the Approval.
 @Suite("How a Handoff starts")
 struct HandoffStartTests {
   private func start(_ trigger: HandoffTrigger, preApproved: Bool, spy: WebViewSpy)

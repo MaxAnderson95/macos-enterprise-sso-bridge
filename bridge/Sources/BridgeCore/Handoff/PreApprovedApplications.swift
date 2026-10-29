@@ -4,9 +4,10 @@ import Foundation
 /// proceed without an Approval. See
 /// docs/adr/0004-pre-approved-applications-skip-the-approval.md.
 ///
-/// Matched only against the destination the adapter derived from the Sign-in request,
-/// never against anything the Extension sends, for the same reason the Approval shows
-/// only derived values: the Extension is the distrusted party.
+/// Matched only against the plan's `boundDestination`, the one the adapter can say the
+/// Callback will actually reach, never against a display hint or anything the Extension
+/// sends: the Extension is the distrusted party, and a hint is not where the credential
+/// goes.
 public struct PreApprovedApplications: Equatable, Sendable {
   /// The `.app`'s bundle identifier, named explicitly rather than read through
   /// `UserDefaults.standard`, so the bare SwiftPM executable used in development reads
@@ -52,7 +53,7 @@ public struct PreApprovedApplications: Equatable, Sendable {
   }
 
   /// Scheme, host, and effective port, compared exactly. A nil destination is one the
-  /// adapter could not derive, and is never pre-approved.
+  /// adapter could not bind the Callback to, and is never pre-approved.
   public func contains(_ destination: URL?) -> Bool {
     guard let destination, destination.scheme?.lowercased() == "https",
       let host = destination.host()?.lowercased(), let port = destination.effectivePort

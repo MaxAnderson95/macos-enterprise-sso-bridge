@@ -34,10 +34,11 @@ func runHandoff(caller: AllowedBrowser) -> Never {
   // The one place in the Bridge that constructs a `WKWebView`, and it is a closure
   // `Handoff.approve()` alone can reach. That is what makes ADR 0002's ordering a
   // property of the code rather than of this file's statement order.
+  let preApproved = PreApprovedApplications.fromPreferences().contains(plan.boundDestination)
   let start = Handoff.start(
     prompt: prompt,
     trigger: trigger,
-    destinationIsPreApproved: PreApprovedApplications.fromPreferences().contains(plan.destination),
+    destinationIsPreApproved: preApproved,
     makeWebView: HandoffWebView.makeWebView
   )
   switch start {

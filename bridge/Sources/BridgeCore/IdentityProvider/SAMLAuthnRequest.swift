@@ -11,10 +11,18 @@ import Foundation
 /// are parsed directly. HTTP-Artifact is not handled because Entra does not implement
 /// it, which is the same reason `SAMLart` is not recognized on the way back.
 enum SAMLAuthnRequest {
-  /// The Assertion Consumer Service URL, or the issuer when the request does not name
-  /// one. Nil whenever the answer would be a guess: unreadable encoding, XML that is
-  /// not an AuthnRequest, or an issuer spelled as a URN rather than a web address.
-  static func destination(fromEncoded encoded: String) -> URL? {
+  /// What the request names as web addresses. Kept apart because only the ACS URL is
+  /// where Entra posts the assertion; the issuer identifies the Application and need not
+  /// share its Callback's origin, so it is good enough to show but not to pre-approve.
+  struct Destinations: Equatable {
+    let assertionConsumerService: URL?
+    let issuer: URL?
+  }
+
+  /// Nil whenever there is nothing to say: unreadable encoding, XML that is not an
+  /// AuthnRequest, or neither an ACS URL nor an issuer that is a web address (an issuer
+  /// spelled as a URN, say).
+  static func destinations(fromEncoded encoded: String) -> Destinations? {
     guard let xml = xml(fromEncoded: encoded) else { return nil }
     // External entities never load: this XML came from the Extension, which ADR 0002
     // treats as untrusted.
@@ -24,16 +32,19 @@ enum SAMLAuthnRequest {
       root.localName == "AuthnRequest"
     else { return nil }
 
-    if let consumer = root.attribute(forName: "AssertionConsumerServiceURL")?.stringValue,
-      let url = webURL(consumer)
-    {
-      return url
-    }
+    let consumer = root.attribute(forName: "AssertionConsumerServiceURL")?.stringValue
     let issuer = root.children?
       .compactMap { $0 as? XMLElement }
       .first { $0.localName == "Issuer" }?
       .stringValue
-    return issuer.flatMap(webURL)
+    let destinations = Destinations(
+      assertionConsumerService: consumer.flatMap(webURL),
+      issuer: issuer.flatMap(webURL)
+    )
+    guard destinations.assertionConsumerService != nil || destinations.issuer != nil else {
+      return nil
+    }
+    return destinations
   }
 
   static func xml(fromEncoded encoded: String) -> Data? {

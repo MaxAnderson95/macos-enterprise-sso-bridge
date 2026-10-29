@@ -7,12 +7,15 @@ import Testing
 struct EntraPlanTests {
   /// One Sign-in request and what the adapter should be able to say about it. A nil
   /// `destination` in a case that is still replayable is the difference that matters:
-  /// the Approval says so plainly rather than guessing.
+  /// the Approval says so plainly rather than guessing. `boundDestination` is the stricter
+  /// answer a Pre-approved Application is matched against: nil wherever `destination` is
+  /// only a hint.
   struct PlanCase: Sendable, CustomTestStringConvertible {
     let name: String
     let request: SignInRequest
     let replayable: Bool
     let destination: String?
+    let boundDestination: String?
 
     var testDescription: String { name }
   }
@@ -32,6 +35,7 @@ struct EntraPlanTests {
     let plan = EntraAdapter().plan(testCase.request)
     #expect((plan != nil) == testCase.replayable)
     #expect(plan?.destination?.absoluteString == testCase.destination)
+    #expect(plan?.boundDestination?.absoluteString == testCase.boundDestination)
   }
 
   static let planCases: [PlanCase] = [
@@ -42,7 +46,8 @@ struct EntraPlanTests {
           + "&redirect_uri=https%3A%2F%2Fapp.example.com%2Fsignin-oidc&scope=openid"
       ),
       replayable: true,
-      destination: "https://app.example.com/signin-oidc"
+      destination: "https://app.example.com/signin-oidc",
+      boundDestination: "https://app.example.com/signin-oidc"
     ),
     PlanCase(
       name: "OIDC form_post, where the redirect_uri is still in the query",
@@ -52,7 +57,8 @@ struct EntraPlanTests {
         [("state", "opaque")]
       ),
       replayable: true,
-      destination: "https://app.example.com/signin-oidc"
+      destination: "https://app.example.com/signin-oidc",
+      boundDestination: "https://app.example.com/signin-oidc"
     ),
     PlanCase(
       name: "SAML HTTP-POST binding, destination from the ACS URL",
@@ -61,7 +67,8 @@ struct EntraPlanTests {
         [("SAMLRequest", SAMLFixtures.acsPostBinding), ("RelayState", "opaque")]
       ),
       replayable: true,
-      destination: "https://app.example.com/sso/acs"
+      destination: "https://app.example.com/sso/acs",
+      boundDestination: "https://app.example.com/sso/acs"
     ),
     PlanCase(
       name: "SAML HTTP-POST binding whose XML carries a UTF-8 byte-order mark",
@@ -70,7 +77,8 @@ struct EntraPlanTests {
         [("SAMLRequest", SAMLFixtures.acsPostBindingWithBOM), ("RelayState", "opaque")]
       ),
       replayable: true,
-      destination: "https://app.example.com/sso/acs"
+      destination: "https://app.example.com/sso/acs",
+      boundDestination: "https://app.example.com/sso/acs"
     ),
     PlanCase(
       name: "SAML HTTP-Redirect binding, inflated to reach the ACS URL",
@@ -80,43 +88,60 @@ struct EntraPlanTests {
             withAllowedCharacters: .alphanumerics)!
       ),
       replayable: true,
-      destination: "https://app.example.com/sso/acs"
+      destination: "https://app.example.com/sso/acs",
+      boundDestination: "https://app.example.com/sso/acs"
     ),
     PlanCase(
       name: "SAML with no ACS URL falls back to the issuer",
       request: post("\(entra)/common/saml2", [("SAMLRequest", SAMLFixtures.issuerOnly)]),
       replayable: true,
-      destination: "https://app.example.com/sso/metadata"
+      destination: "https://app.example.com/sso/metadata",
+      boundDestination: nil
+    ),
+    PlanCase(
+      name: "A redirect_uri on a SAML request is shown but binds nothing",
+      request: post(
+        "\(entra)/common/saml2?redirect_uri=https%3A%2F%2Flisted.example%2Fcallback",
+        [("SAMLRequest", SAMLFixtures.acsPostBinding)]
+      ),
+      replayable: true,
+      destination: "https://listed.example/callback",
+      boundDestination: nil
     ),
     PlanCase(
       name: "SAML whose issuer is a URN is replayable with no destination",
       request: post("\(entra)/common/saml2", [("SAMLRequest", SAMLFixtures.urnIssuer)]),
       replayable: true,
-      destination: nil
+      destination: nil,
+      boundDestination: nil
     ),
     PlanCase(
       name: "SAMLRequest that decodes to nothing is replayable with no destination",
       request: post("\(entra)/common/saml2", [("SAMLRequest", "not-base64-at-all***")]),
       replayable: true,
-      destination: nil
+      destination: nil,
+      boundDestination: nil
     ),
     PlanCase(
       name: "A relative redirect_uri is replayable with no destination",
       request: get("\(entra)/common/oauth2/v2.0/authorize?redirect_uri=%2Fsignin-oidc"),
       replayable: true,
-      destination: nil
+      destination: nil,
+      boundDestination: nil
     ),
     PlanCase(
       name: "Neither a redirect_uri nor a SAMLRequest is not replayable",
       request: get("\(entra)/common/oauth2/v2.0/authorize?client_id=abc&scope=openid"),
       replayable: false,
-      destination: nil
+      destination: nil,
+      boundDestination: nil
     ),
     PlanCase(
       name: "A POST carrying some other form is not replayable",
       request: post("\(entra)/common/login", [("username", "someone@example.com")]),
       replayable: false,
-      destination: nil
+      destination: nil,
+      boundDestination: nil
     ),
   ]
 }
@@ -227,8 +252,8 @@ struct SAMLAuthnRequestTests {
   func stripsPadding() {
     let unpadded = SAMLFixtures.acsRedirectBinding.replacingOccurrences(of: "=", with: "")
     #expect(
-      SAMLAuthnRequest.destination(fromEncoded: unpadded)?.absoluteString
-        == "https://app.example.com/sso/acs"
+      SAMLAuthnRequest.destinations(fromEncoded: unpadded)?.assertionConsumerService?
+        .absoluteString == "https://app.example.com/sso/acs"
     )
   }
 
@@ -242,6 +267,6 @@ struct SAMLAuthnRequestTests {
     ]
   )
   func refusesJunk(_ encoded: String) {
-    #expect(SAMLAuthnRequest.destination(fromEncoded: encoded) == nil)
+    #expect(SAMLAuthnRequest.destinations(fromEncoded: encoded) == nil)
   }
 }

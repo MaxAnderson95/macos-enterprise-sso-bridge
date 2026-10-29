@@ -55,7 +55,7 @@ struct PreApprovedApplicationsTests {
     #expect(!listing("https://app.example.com").contains(url(destination)))
   }
 
-  // ADR 0004: a plan whose destination could not be derived always gets the Approval.
+  // ADR 0004: a plan with no bound destination always gets the Approval.
   @Test("A nil destination is never pre-approved")
   func nilDestination() {
     #expect(!listing("https://app.example.com").contains(nil))

@@ -62,6 +62,7 @@ func runHandoffWindow(
     handoff: handoff, request: request, plan: plan, channel: channel)
   application.setActivationPolicy(.regular)
   application.delegate = delegate
+  installMainMenu(offeringQuit: false)
   application.run()
   // The delegate answers and exits from whichever way the Handoff ended, so reaching
   // here means the run loop ended with nothing said.
@@ -84,6 +85,7 @@ func runUserLaunchWindow() -> Never {
   let delegate = AppDelegate()
   application.setActivationPolicy(.regular)
   application.delegate = delegate
+  installMainMenu(offeringQuit: true)
   application.run()
   exit(0)
 }

@@ -20,7 +20,7 @@ Settled by the prototype in [issue #10](https://github.com/MaxAnderson95/macos-e
 
 Two shapes. The Approval is a 540 pt panel that reads as a question. On approval the window grows to 900 x 520 to hold the `WKWebView`, and that resize is the visible signal that the Handoff started. The alternative, a single fixed 900 x 520 window with a prompt floating in the middle, reads as a page rather than a decision.
 
-The title is fixed: "Enterprise SSO Bridge". The body already carries the destination and the requesting browser, so a per-state title would be motion without information. The window has no menu bar beyond the system minimum.
+The title is fixed: "Enterprise SSO Bridge". The body already carries the destination and the requesting browser, so a per-state title would be motion without information. The menu bar holds an Edit menu and nothing else, because AppKit delivers Cut, Copy, Paste, Select All, and Undo to a text field or web view only through menu items carrying those shortcuts; without it nothing can be pasted into the Pre-approved Applications editor or into Entra's page. The application menu offers Quit only for a user launch, since a Handoff must end through Cancel or the close button to answer `declined`.
 
 ### States
 

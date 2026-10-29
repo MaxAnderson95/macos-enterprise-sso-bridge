@@ -91,6 +91,8 @@ Nothing else here is fleet-deployable, by design. This tool ships outside the ex
 
 By default every sign-in takes two clicks: the toolbar action, then Sign In on the Bridge's Approval. For an Application you sign into every day you can list its origin, and the Bridge signs in to it as soon as its login page opens, with no click and no Approval.
 
+To edit the list, open Enterprise SSO Bridge from `/Applications`. Type the host the Approval names (for example `app.example.com`, or paste any `https://` address from the site) and press Add; select entries and press Remove to take them off. Changes save immediately. The same list is also editable from the command line:
+
 ```sh
 defaults write tech.maxanderson.enterprise-sso-bridge PreApprovedApplications -array "https://app.example.com"
 defaults write tech.maxanderson.enterprise-sso-bridge PreApprovedApplications -array-add "https://other.example.com:8443"

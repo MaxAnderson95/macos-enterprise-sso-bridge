@@ -29,7 +29,7 @@ The title is fixed: "Enterprise SSO Bridge". The body already carries the destin
 3. **Authenticating.** The `WKWebView` carries the real Entra page. A pre-approved Handoff opens the window directly in this state, at its full size. A footer keeps the destination visible, which is the only place it remains on screen once the provider's page is up, and offers Cancel. Cancel and closing the window are the same `declined` path.
 4. **Returning the Callback.** The same window with the footer text swapped, usually on screen for well under a second. There is no separate confirmation window.
 5. **Failure.** Shown in the window with a Close button, so a Handoff that fails while the user is looking at it says what happened instead of vanishing. The Extension's badge carries its own copy for when attention has moved back to the tab. A rejected Caller still shows nothing at all.
-6. **Opened from Finder.** The user-launch carve-out: a window explaining that the Bridge runs when a browser needs it, showing the installed version, linking to the README, and offering Quit.
+6. **Opened from Finder.** The user-launch carve-out: a window explaining that the Bridge runs when a browser needs it, showing the installed version, holding the editor for [Pre-approved Applications](#pre-approved-applications), linking to the README, and offering Quit.
 
 ### Focus
 
@@ -56,6 +56,8 @@ Required for every Handoff whose destination is not a Pre-approved Application. 
 Recorded as [ADR 0004](../adr/0004-pre-approved-applications-skip-the-approval.md).
 
 The list is the array of strings under key `PreApprovedApplications` in preferences domain `tech.maxanderson.enterprise-sso-bridge`, read by that explicit domain name so the bare SwiftPM executable used in development reads the same list as the `.app`. Each entry must be an HTTPS origin: scheme `https`, a host, an optional port, and no path beyond `/`, no query, no fragment, and no credentials. An invalid entry is ignored and logged by its index, never its value. A missing key, an empty array, or a value that is not an array pre-approves nothing.
+
+The user edits the list in the Opened from Finder window, or with `defaults`. The editor turns what was typed into an origin before storing it: a bare host becomes `https://host`, a pasted HTTPS URL is cut to its origin, and port 443 is dropped. It refuses anything that is not HTTPS or that carries credentials, so it never stores an entry the Bridge would ignore. Entries the Bridge ignores, such as one written with `defaults` that has a path, are listed as ignored so they can be removed. Each change is saved immediately. Editing there needs no extra guard: that window exists only for a user launch, which never carries a Sign-in request, and browser-resident code cannot click in another process's window.
 
 A Handoff is pre-approved when the plan's bound destination has the same scheme, host (case-insensitively), and effective port as a listed origin. The bound destination is the one the adapter can say the Callback will reach (see [identity-provider-adapter.md](identity-provider-adapter.md)), not the display destination the Approval shows, which may be a SAML issuer. Nothing the Extension sends takes part, and a plan with no bound destination never matches, so a SAML Application whose request names no ACS URL always gets the Approval and is never started without a click.
 

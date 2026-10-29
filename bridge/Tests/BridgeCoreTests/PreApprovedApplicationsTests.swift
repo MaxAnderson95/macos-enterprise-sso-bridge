@@ -79,6 +79,7 @@ struct PreApprovedApplicationsTests {
   )
   func rejectedEntries(entry: String) {
     let list = listing(entry)
+    #expect(!PreApprovedApplications.isReadable(entry))
     #expect(list == PreApprovedApplications(preferenceValue: nil))
     #expect(!list.contains(url("https://app.example.com/c")))
   }
@@ -91,6 +92,35 @@ struct PreApprovedApplicationsTests {
       ] as [Any])
     #expect(list.contains(url("https://two.example.com/c")))
     #expect(!list.contains(url("https://app.example.com/path")))
+  }
+
+  @Test(
+    "The editor stores what was typed as an origin",
+    arguments: [
+      ("app.example.com", "https://app.example.com"),
+      ("  App.Example.COM \n", "https://app.example.com"),
+      ("https://app.example.com/signin-oidc?x=1#top", "https://app.example.com"),
+      ("https://app.example.com:443/", "https://app.example.com"),
+      ("app.example.com:8443", "https://app.example.com:8443"),
+      ("https://app.example.com:8443/sso", "https://app.example.com:8443"),
+    ]
+  )
+  func editorEntry(input: String, entry: String) {
+    #expect(PreApprovedApplications.entry(from: input) == entry)
+    // Whatever the editor stores, the Bridge must read back as a listed origin.
+    #expect(PreApprovedApplications(preferenceValue: [entry]).contains(url("\(entry)/c")))
+  }
+
+  @Test(
+    "The editor refuses what could never be a listed origin",
+    arguments: [
+      "", "   ", "http://app.example.com", "ftp://app.example.com",
+      "https://user@app.example.com", "https://user:secret@app.example.com", "https://",
+      "not a url",
+    ]
+  )
+  func editorRefusal(input: String) {
+    #expect(PreApprovedApplications.entry(from: input) == nil)
   }
 
   @Test("A missing key, an empty array, or a value that is not an array pre-approves nothing")

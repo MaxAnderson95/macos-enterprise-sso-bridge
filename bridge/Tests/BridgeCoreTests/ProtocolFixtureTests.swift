@@ -19,8 +19,8 @@ struct ProtocolFixtureTests {
     try harness.writeAndClose(try Hex.data(Fixtures.text("request-post-frame.le.hex")))
 
     let received = try harness.channel.receiveRequest()
-    guard case .request(.post(let url, let fields)) = received else {
-      Issue.record("expected a POST Sign-in request")
+    guard case .request(.post(let url, let fields), .automatic) = received else {
+      Issue.record("expected an automatic POST Sign-in request")
       return
     }
     let described = try Fixtures.object("request-post.json")["url"] as? String

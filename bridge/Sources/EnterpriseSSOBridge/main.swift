@@ -15,11 +15,13 @@ func runHandoff(caller: AllowedBrowser) -> Never {
   }
 
   let request: SignInRequest
+  let trigger: HandoffTrigger
   switch received {
   case .answer(let response):
     send(response, over: channel)
-  case .request(let received):
+  case .request(let received, let receivedTrigger):
     request = received
+    trigger = receivedTrigger
   }
 
   guard let plan = IdentityProviders.plan(for: request) else {
@@ -32,8 +34,20 @@ func runHandoff(caller: AllowedBrowser) -> Never {
   // The one place in the Bridge that constructs a `WKWebView`, and it is a closure
   // `Handoff.approve()` alone can reach. That is what makes ADR 0002's ordering a
   // property of the code rather than of this file's statement order.
-  let handoff = Handoff(prompt: prompt, makeWebView: HandoffWebView.makeWebView)
-  runHandoffWindow(handoff: handoff, request: request, plan: plan, channel: channel)
+  let preApproved = PreApprovedApplications.fromPreferences().contains(plan.boundDestination)
+  let start = Handoff.start(
+    prompt: prompt,
+    trigger: trigger,
+    destinationIsPreApproved: preApproved,
+    makeWebView: HandoffWebView.makeWebView
+  )
+  switch start {
+  case .answer(let response):
+    // An automatic Handoff nobody pre-approved: no window, and no focus change.
+    send(response, over: channel)
+  case .handoff(let handoff):
+    runHandoffWindow(handoff: handoff, request: request, plan: plan, channel: channel)
+  }
 }
 
 @MainActor

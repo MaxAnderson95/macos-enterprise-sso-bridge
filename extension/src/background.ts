@@ -12,6 +12,15 @@ const session = tabSession();
 // Action state shares storage with the popup and Relay page.
 const state = actionState();
 
+/**
+ * Tabs whose Sign-in request was just captured, waiting for the page it loaded to finish.
+ * The load that carried the capture sends `tabs.onUpdated` a "loading" status, which
+ * clears the action state, so an automatic Handoff started at capture would lose its
+ * in-flight state and could never publish a failure. Memory only: if the worker is
+ * evicted before the load completes, nothing starts and the toolbar action still works.
+ */
+const automaticStarts = new Set<number>();
+
 // Main-frame navigations skip the initiator permission check in both engines, so the
 // generated entry origins alone are enough to see the Application's cross-site POST or
 // redirect into the identity provider. `requestBody` is what carries a SAML POST's
@@ -29,6 +38,7 @@ chrome.webRequest.onBeforeRequest.addListener(
       return;
     }
     void session.recordCapture(details.tabId, request, Date.now());
+    automaticStarts.add(details.tabId);
   },
   { urls: entryOriginMatchPatterns, types: ["main_frame"] },
   ["requestBody"],
@@ -85,14 +95,19 @@ function logOutcome(outcome: HandoffOutcome, name: StateName) {
 
 /**
  * Where a Handoff came from. A toolbar click has to be on a sign-in page; Try again
- * has been on one already and replays the capture that survived the failure.
+ * has been on one already and replays the capture that survived the failure. A capture
+ * starts one on its own, which the Bridge runs only for a Pre-approved Application.
  */
-type Start = { from: "click"; tabUrl: string | undefined } | { from: "retry" };
+type Start =
+  { from: "click"; tabUrl: string | undefined } | { from: "retry" } | { from: "capture" };
 
 async function runHandoff(tabId: number, start: Start) {
-  if (!(await session.claimHandoff(tabId, Date.now()))) {
+  const trigger = start.from === "capture" ? "automatic" : "manual";
+  if (!(await session.claimHandoff(tabId, Date.now(), trigger))) {
     // A Handoff is already running for this tab and the Bridge window has the user's
-    // attention. A second click is not a second sign-in.
+    // attention. A second click is not a second sign-in. An automatic start is also
+    // refused shortly after the tab's last Handoff, which is what stops an Application
+    // that answers its Callback with a fresh authorization from signing in forever.
     return;
   }
   // Every exit from here releases the claim, or the tab could never start another
@@ -112,7 +127,7 @@ async function runHandoff(tabId: number, start: Start) {
       await state.settle(tabId, "cannotStart");
       return;
     }
-    const outcome = await requestHandoff(request);
+    const outcome = await requestHandoff(request, trigger);
     const verdict = handoffVerdict(outcome);
     if ("state" in verdict) {
       logOutcome(outcome, verdict.state);
@@ -126,7 +141,7 @@ async function runHandoff(tabId: number, start: Start) {
     }
     end = "success";
   } finally {
-    await session.finishHandoff(tabId, end);
+    await session.finishHandoff(tabId, end, Date.now());
   }
 }
 
@@ -155,12 +170,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Without the `tabs` permission a navigation away from an entry origin arrives with no
 // URL, so the load itself is the signal. A Handoff never moves the tab on its own, so
 // the only loads seen mid-Handoff are the Callback's, which wants the badge cleared too.
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "loading") {
     void state.clear(tabId);
+  }
+  // The host permissions reveal the URL only while the tab is on an entry origin. A page
+  // that already left the provider, because the browser still had a provider session
+  // and was sent straight back, has nothing for the Bridge to sign in to.
+  if (
+    changeInfo.status === "complete" &&
+    automaticStarts.delete(tabId) &&
+    isIdentityProviderOrigin(tab.url)
+  ) {
+    void runHandoff(tabId, { from: "capture" });
   }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  automaticStarts.delete(tabId);
   void session.forgetTab(tabId);
 });

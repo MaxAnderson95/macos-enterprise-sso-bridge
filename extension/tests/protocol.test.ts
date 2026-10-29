@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseBridgeResponse, requestMessage } from "../src/protocol";
-import type { FormField, SignInRequest } from "../src/protocol";
+import type { FormField, HandoffTrigger, SignInRequest } from "../src/protocol";
 import { encodeFrame, hostIsLittleEndian, toHex } from "./helpers/nativeMessagingFrame";
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "fixtures", "protocol");
@@ -20,14 +20,14 @@ describe("the request the Extension sends", () => {
   it("matches the GET fixture the Bridge decodes", () => {
     const wire = fixtureJson("request-get.json");
     const request: SignInRequest = { url: wire.url as string, method: "GET" };
-    expect(requestMessage(request)).toEqual(wire);
+    expect(requestMessage(request, "manual")).toEqual(wire);
   });
 
   it("matches the POST fixture, repeated field name included", () => {
     const wire = fixtureJson("request-post.json");
     const fields = wire.fields as FormField[];
     const request: SignInRequest = { url: wire.url as string, method: "POST", fields };
-    expect(requestMessage(request)).toEqual(wire);
+    expect(requestMessage(request, wire.trigger as HandoffTrigger)).toEqual(wire);
     expect(fields.filter(([name]) => name === "RelayState")).toHaveLength(2);
   });
 
@@ -40,7 +40,9 @@ describe("the request the Extension sends", () => {
       method: "POST",
       fields: wire.fields as FormField[],
     };
-    const frame = encodeFrame(JSON.stringify(requestMessage(request)));
+    const frame = encodeFrame(
+      JSON.stringify(requestMessage(request, wire.trigger as HandoffTrigger)),
+    );
     expect(toHex(frame)).toBe(fixture("request-post-frame.le.hex").trim());
   });
 });
@@ -65,6 +67,12 @@ describe("the response the Extension parses", () => {
     });
   });
 
+  it("reads approval_required", () => {
+    expect(parseBridgeResponse(fixtureJson("response-approval-required.json"))).toEqual({
+      result: "approval_required",
+    });
+  });
+
   it("reads an error with its detail", () => {
     expect(parseBridgeResponse(fixtureJson("response-error.json"))).toEqual({
       result: "error",
@@ -77,7 +85,7 @@ describe("the response the Extension parses", () => {
     expect(parseBridgeResponse(fixtureJson("response-unsupported-version.json"))).toEqual({
       result: "error",
       code: "unsupported_version",
-      bridgeVersion: 1,
+      bridgeVersion: 2,
     });
   });
 

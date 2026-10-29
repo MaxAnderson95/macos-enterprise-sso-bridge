@@ -30,16 +30,19 @@ public enum SignInRequest: Equatable, Sendable {
   }
 }
 
-/// The one message the Extension sends: the wire version, and the Sign-in request.
+/// The one message the Extension sends: the wire version, who started the Handoff, and
+/// the Sign-in request.
 ///
 /// There is no Handoff identifier. One process serves one Handoff, so there is
 /// nothing to route.
 public struct RequestMessage: Equatable, Sendable {
   public let version: Int
+  public let trigger: HandoffTrigger
   public let signInRequest: SignInRequest
 
-  public init(version: Int, signInRequest: SignInRequest) {
+  public init(version: Int, trigger: HandoffTrigger, signInRequest: SignInRequest) {
     self.version = version
+    self.trigger = trigger
     self.signInRequest = signInRequest
   }
 }
@@ -47,6 +50,7 @@ public struct RequestMessage: Equatable, Sendable {
 extension RequestMessage: Decodable {
   private enum CodingKeys: String, CodingKey {
     case version
+    case trigger
     case url
     case method
     case fields
@@ -55,6 +59,15 @@ extension RequestMessage: Decodable {
   public init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let version = try container.decode(Int.self, forKey: .version)
+
+    let rawTrigger = try container.decode(String.self, forKey: .trigger)
+    guard let trigger = HandoffTrigger(rawValue: rawTrigger) else {
+      throw DecodingError.dataCorruptedError(
+        forKey: .trigger,
+        in: container,
+        debugDescription: "trigger must be manual or automatic"
+      )
+    }
 
     // Decoded as a string and parsed here because `URL`'s own decoding accepts a
     // relative reference, which is not a request the Bridge could ever replay. Which
@@ -87,9 +100,10 @@ extension RequestMessage: Decodable {
           debugDescription: "fields is present only on a POST"
         )
       }
-      self.init(version: version, signInRequest: .get(url: url))
+      self.init(version: version, trigger: trigger, signInRequest: .get(url: url))
     case .post:
-      self.init(version: version, signInRequest: .post(url: url, fields: fields ?? []))
+      self.init(
+        version: version, trigger: trigger, signInRequest: .post(url: url, fields: fields ?? []))
     }
   }
 }

@@ -207,6 +207,12 @@ describe("the verdict on an exchange with the Bridge", () => {
     });
   });
 
+  // An automatic Handoff to an Application nobody pre-approved is not a failure, and the
+  // toolbar action still works, so the tab goes back to how it looked before.
+  it("leaves the tab idle on approval_required, with no red and no popup", () => {
+    expect(handoffVerdict(response({ result: "approval_required" }))).toEqual({ state: "idle" });
+  });
+
   // A cancellation that looks like an error teaches the user to distrust the red badge.
   it("shows a declined Approval as cancelled, with no red and no popup", () => {
     expect(handoffVerdict(response({ result: "declined" }))).toEqual({ state: "cancelled" });
@@ -276,6 +282,16 @@ describe("showing a state on the action", () => {
     await state.settle(7, "noReply");
 
     await expect(session.readState(7)).resolves.toBe("noReply");
+  });
+
+  it("settles to idle by dropping the in-flight badge and the record", async () => {
+    const { state, session, detailsOf } = subject();
+    await state.show(7, "inFlight");
+    await state.settle(7, "idle");
+
+    expect(detailsOf("setBadgeText").at(-1)).toEqual({ tabId: 7, text: "" });
+    expect(detailsOf("setPopup").at(-1)).toEqual({ tabId: 7, popup: "" });
+    await expect(session.readState(7)).resolves.toBeNull();
   });
 
   it("clears back to idle, dropping the popup and the record", async () => {

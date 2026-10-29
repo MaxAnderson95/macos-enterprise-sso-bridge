@@ -26,9 +26,22 @@ public struct EntraAdapter: IdentityProviderAdapter {
     // A `redirect_uri` that will not parse still makes the request replayable; it just
     // leaves the Approval with nothing truthful to show.
     let redirectURI = rawRedirectURI.flatMap(Self.webURL)
-    let destination = redirectURI ?? samlRequest.flatMap(SAMLAuthnRequest.destination)
+    let saml = samlRequest.flatMap(SAMLAuthnRequest.destinations)
+    let destination = redirectURI ?? saml?.assertionConsumerService ?? saml?.issuer
 
-    return HandoffPlan(destination: destination) { candidate in
+    // Entra validates a `redirect_uri` against the client's registration and posts a
+    // SAML assertion to the ACS URL, so each is where the Callback lands only when it is
+    // the sole protocol in play. A `redirect_uri` on a SAML request is not what Entra
+    // answers, and an issuer is not an endpoint at all.
+    let boundDestination: URL? =
+      switch (rawRedirectURI, samlRequest) {
+      case (.some, nil): redirectURI
+      case (nil, .some): saml?.assertionConsumerService
+      default: nil
+      }
+
+    return HandoffPlan(destination: destination, boundDestination: boundDestination) {
+      candidate in
       Self.recognizes(candidate, redirectURI: redirectURI)
     }
   }

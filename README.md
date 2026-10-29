@@ -1,6 +1,6 @@
 # Enterprise SSO Bridge
 
-Lets third-party macOS browsers complete corporate single sign-on through the Mac's native Enterprise SSO path, which those browsers cannot reach on their own. You click the toolbar action in your browser, a small native app authenticates with the identity provider, and the sign-in finishes back in the tab you started from.
+Lets third-party macOS browsers complete corporate single sign-on through the Mac's native Enterprise SSO path, which those browsers cannot reach on their own. You click the toolbar action in your browser, or for an Application you have [pre-approved](#pre-approved-applications) click nothing at all, a small native app authenticates with the identity provider, and the sign-in finishes back in the tab you started from.
 
 Without a working Enterprise SSO integration, a browser may be unable to use the Mac's existing work-account sign-in or present its device identity to Entra. That can mean extra authentication prompts or a Conditional Access block, even on a Mac that is already authenticated to the tenant.
 
@@ -87,6 +87,25 @@ Without that entry the Bridge's web view never reaches the platform SSO path, so
 
 Nothing else here is fleet-deployable, by design. This tool ships outside the extension stores, without Apple signing, and without browser policies, so every step above is a person at a keyboard.
 
+## Pre-approved Applications
+
+By default every sign-in takes two clicks: the toolbar action, then Sign In on the Bridge's Approval. For an Application you sign into every day you can list its origin, and the Bridge signs in to it as soon as its login page opens, with no click and no Approval.
+
+To edit the list, open Enterprise SSO Bridge from `/Applications`. Type the host the Approval names (for example `app.example.com`, or paste any `https://` address from the site) and press Add; select entries and press Remove to take them off. Changes save immediately. The same list is also editable from the command line:
+
+```sh
+defaults write tech.maxanderson.enterprise-sso-bridge PreApprovedApplications -array "https://app.example.com"
+defaults write tech.maxanderson.enterprise-sso-bridge PreApprovedApplications -array-add "https://other.example.com:8443"
+defaults read tech.maxanderson.enterprise-sso-bridge PreApprovedApplications
+defaults delete tech.maxanderson.enterprise-sso-bridge PreApprovedApplications
+```
+
+`-array` replaces the list and `-array-add` appends to it. Each entry is an HTTPS origin: `https://`, the host the sign-in returns to (the one the Approval names in "Sign in to app.example.com?"), and a port only when it is not 443. An entry with a path, query, fragment, or credentials is ignored, and the Bridge logs its position in the list under the `tech.maxanderson.enterprise-sso-bridge` subsystem. The Bridge reads the list at the start of each Handoff, so a change applies to the next sign-in. The browser extension needs no setting.
+
+An Application that is not listed behaves as before: opening its login page shows no Bridge window, and the toolbar action shows the Approval. A SAML Application whose sign-in request does not name its assertion consumer URL cannot be pre-approved and always needs the click, even when its Approval names a host: that host comes from the request's issuer, which identifies the Application but is not where the sign-in returns.
+
+The Approval is what stops code running inside an allowed browser from getting a sign-in for an Application without you noticing. Listing an Application removes that check for it: a compromised copy of this extension, or other code inside the browser process, could obtain a fresh sign-in to a listed Application with no click. Native code in the browser process can already read the browser's existing sessions, but this extension cannot, since it has no access to cookies or to Application pages. For a compromised extension, listing is new exposure, and the Bridge accepts it only for Applications you choose. The list matches where the sign-in returns, not which app registration asks for it. The reasoning is in [ADR 0004](docs/adr/0004-pre-approved-applications-skip-the-approval.md).
+
 ## Updating
 
 Nothing updates itself. A new release means installing the new `.pkg`, running `install-chromium-extension.sh` against the new `.crx`, and installing the new `.xpi` through the same file picker. The script is the update path as well as the install path, and it overwrites both files it owns.
@@ -157,7 +176,7 @@ Helium / Ardia / Zen         Bridge: WKWebView               Entra
     |--- callback to the application, in the original tab
 ```
 
-The Application starts its normal login in the original browser, and the Extension remembers the Sign-in request. When the Entra sign-in page appears, the user clicks the Extension's toolbar button instead of entering credentials in that tab. After Approval, the Bridge replays the request in its allowed WebKit web view. When Entra sends the authentication response back toward the Application, the Bridge captures that Callback before WebKit delivers it and hands it to the Extension. The Extension delivers it from the original tab, where the Application can finish the login and establish its browser session.
+The Application starts its normal login in the original browser, and the Extension remembers the Sign-in request. When the Entra sign-in page appears, the user clicks the Extension's toolbar button instead of entering credentials in that tab, or, for a Pre-approved Application, the Extension starts the Handoff itself. After Approval, or straight away for a Pre-approved Application, the Bridge replays the request in its allowed WebKit web view. When Entra sends the authentication response back toward the Application, the Bridge captures that Callback before WebKit delivers it and hands it to the Extension. The Extension delivers it from the original tab, where the Application can finish the login and establish its browser session.
 
 Only that transaction's Callback crosses back. The Bridge does not export the device key, return the PRT, or copy its cookie store into the other browser. Entra still evaluates the sign-in and can require MFA or refuse access. The Application still validates its authentication response and transaction state.
 
@@ -187,11 +206,12 @@ Both engines use the same native-messaging framing:
 
 The length is in native byte order, which is little-endian on the supported Apple silicon Macs, and counts JSON bytes rather than characters. Frames can arrive through multiple pipe reads; the Bridge reads until the complete prefix and body have arrived. stdout is reserved for protocol frames. Native diagnostics go to `os_log`.
 
-The Extension sends protocol version `1`, the original URL, and an explicit HTTP method. A GET request has no `fields` member:
+The Extension sends protocol version `2`, a `trigger` saying whether the user (`manual`) or the Extension on capture (`automatic`) started the Handoff, the original URL, and an explicit HTTP method. A GET request has no `fields` member:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "trigger": "manual",
   "url": "https://login.microsoftonline.com/example-tenant/oauth2/v2.0/authorize?client_id=example&redirect_uri=https%3A%2F%2Fapp.example.com%2Fcallback&response_type=code&state=example",
   "method": "GET"
 }
@@ -201,7 +221,8 @@ A POST carries decoded form fields as pairs:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "trigger": "automatic",
   "url": "https://login.microsoftonline.com/example-tenant/saml2",
   "method": "POST",
   "fields": [["SAMLRequest", "..."], ["RelayState", "..."]]
@@ -216,8 +237,11 @@ The terminal response is one of these shapes:
 {"result":"callback","url":"https://app.example.com/callback?code=...&state=...","method":"GET"}
 {"result":"callback","url":"https://app.example.com/sso/acs","method":"POST","fields":[["SAMLResponse","..."],["RelayState","..."]]}
 {"result":"declined"}
+{"result":"approval_required"}
 {"result":"error","code":"navigation_failed","detail":"NSURLErrorDomain -1003"}
 ```
+
+`approval_required` answers an automatic Handoff to an Application that is not pre-approved. The Bridge exits without a window and the Extension leaves the tab idle.
 
 Swift enums and TypeScript discriminated unions describe those alternatives. The two implementations share JSON fixtures under `fixtures/protocol/`. An unsupported request version returns `unsupported_version` with an integer `bridgeVersion` naming the supported protocol version, not the app's release version. Other codes distinguish malformed input, an unsupported Sign-in request, an oversized Callback, navigation failure, and an internal error.
 
@@ -225,11 +249,11 @@ The Bridge caps inbound frame allocation at 1 MiB. For outgoing responses it ser
 
 ### Capturing and replaying the Sign-in request
 
-The Extension observes main-frame requests to the configured Entra entry origins with `webRequest.onBeforeRequest`. It records GET URLs and POST form values without blocking the navigation, and only for a load that carries a `redirect_uri` or a `SAMLRequest`, so the navigations Entra issues on its own afterwards (a username submission, "Sign in another way" from the passkey page, a forgotten account) leave the Application's request in place. The toolbar action requires the current tab to be on an Entra page, including the `login.microsoft.com` passkey page, and a captured request less than ten minutes old. This matters for SAML: the visible login-page URL alone may no longer contain the original `SAMLRequest` POST that started authentication.
+The Extension observes main-frame requests to the configured Entra entry origins with `webRequest.onBeforeRequest`. It records GET URLs and POST form values without blocking the navigation, and only for a load that carries a `redirect_uri` or a `SAMLRequest`, so the navigations Entra issues on its own afterwards (a username submission, "Sign in another way" from the passkey page, a forgotten account) leave the Application's request in place. The toolbar action requires the current tab to be on an Entra page, including the `login.microsoft.com` passkey page, and a captured request less than ten minutes old. This matters for SAML: the visible login-page URL alone may no longer contain the original `SAMLRequest` POST that started authentication. Recording a capture also starts an automatic Handoff once the page finishes loading, unless the tab's previous Handoff finished less than thirty seconds earlier; the Bridge runs it only for a Pre-approved Application.
 
 Captures, per-tab claims, action state, and pending POST Callbacks live in memory-only `storage.session`, surviving Extension background restarts. A failed Handoff retains its capture for retry within the capture's age limit; successful delivery spends it. A locally active claim has no expiry while it waits for the Bridge. A claim inherited after a background restart can be reclaimed after thirty minutes. Closing a tab removes its stored state.
 
-The Bridge checks that the request belongs to its Entra adapter and contains `redirect_uri` or `SAMLRequest`. For Approval, it first uses `redirect_uri`, then the SAML authentication request's `AssertionConsumerServiceURL`, with an HTTP(S) SAML issuer URL as a fallback display hint. An issuer identifies the Application and is not necessarily its actual Callback endpoint. The SAML reader handles base64 XML and the raw-DEFLATE form used by HTTP-Redirect, with external XML entities disabled. If it cannot derive a display destination, the prompt says so. Only after the user approves does the Bridge create the web view and load anything.
+The Bridge checks that the request belongs to its Entra adapter and contains `redirect_uri` or `SAMLRequest`. For Approval, it first uses `redirect_uri`, then the SAML authentication request's `AssertionConsumerServiceURL`, with an HTTP(S) SAML issuer URL as a fallback display hint. An issuer identifies the Application and is not necessarily its actual Callback endpoint. The SAML reader handles base64 XML and the raw-DEFLATE form used by HTTP-Redirect, with external XML entities disabled. If it cannot derive a display destination, the prompt says so. Only after the user approves does the Bridge create the web view and load anything. A Handoff skips the prompt when its destination is a Pre-approved Application and is also where the Callback is bound to land: a `redirect_uri` on a request with no `SAMLRequest`, or an `AssertionConsumerServiceURL` on a request with no `redirect_uri`. An issuer hint or a request carrying both never skips it. For a pre-approved Handoff the web view is created at the point the Approval would have been given.
 
 GET replay loads the captured URL. POST replay loads a generated HTML document that submits the captured fields as a form. The web view uses `WKWebsiteDataStore.default()` and leaves WebKit's user agent unchanged. Its website data can persist across Bridge invocations; one process per Handoff does not mean a fresh cookie store each time. It is the Bridge's WebKit data store, independent of the originating browser's normal or private cookie store.
 
@@ -251,7 +275,7 @@ For GET, the Extension navigates the original tab directly to the Callback URL. 
 
 Microsoft's native-app allowlist authorizes the Bridge to use Enterprise SSO. The Bridge separately controls which browsers may ask it to perform a Handoff. Before reading stdin or creating an `NSApplication`, it captures its parent's audit token through `task_name_for_pid` and `task_info(TASK_AUDIT_TOKEN)`, resolves the running code with `SecCodeCopyGuestWithAttributes`, and checks the designated code-signing requirement for Helium, Ardia, or Zen with `SecCodeCheckValidityWithErrors`. Those requirements include the browser's bundle identifier, Team ID, and Apple signing chain.
 
-The audit token pins a particular process incarnation, avoiding a bare-PID reuse race. This authenticates the parent process; anonymous pipes do not expose an authenticated peer identity, and an Extension ID passed in command-line arguments would be forgeable. Code executing inside an accepted browser is still inside that browser's identity. That is why every Handoff also requires Approval in the Bridge's own native window before any authentication begins. The guarantees and accepted gaps are recorded in [caller authentication](docs/adr/0001-caller-authentication-by-parent-audit-token.md) and [per-Handoff Approval](docs/adr/0002-user-approval-before-every-handoff.md).
+The audit token pins a particular process incarnation, avoiding a bare-PID reuse race. This authenticates the parent process; anonymous pipes do not expose an authenticated peer identity, and an Extension ID passed in command-line arguments would be forgeable. Code executing inside an accepted browser is still inside that browser's identity. That is why every Handoff to an Application you have not pre-approved also requires Approval in the Bridge's own native window before any authentication begins. The guarantees and accepted gaps are recorded in [caller authentication](docs/adr/0001-caller-authentication-by-parent-audit-token.md) [per-Handoff Approval](docs/adr/0002-user-approval-before-every-handoff.md), and [Pre-approved Applications](docs/adr/0004-pre-approved-applications-skip-the-approval.md).
 
 Entra-specific entry origins and Callback rules live in a build-time Identity provider adapter. One checked-in origins file generates the Swift and TypeScript constants and the manifests' host permissions, keeping request capture and native validation aligned. There is no runtime provider configuration. See [the adapter decision](docs/adr/0003-build-time-identity-provider-adapter-seam.md) for that boundary.
 

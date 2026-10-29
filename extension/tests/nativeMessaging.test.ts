@@ -38,16 +38,18 @@ function fakePort() {
 describe("requestHandoff", () => {
   it("sends exactly one versioned request frame", async () => {
     const fake = fakePort();
-    const settled = requestHandoff(request, () => fake.port);
+    const settled = requestHandoff(request, "manual", () => fake.port);
     fake.deliver({ result: "declined" });
     await settled;
 
-    expect(fake.posted).toEqual([{ version: 1, url: request.url, method: "GET" }]);
+    expect(fake.posted).toEqual([
+      { version: 2, trigger: "manual", url: request.url, method: "GET" },
+    ]);
   });
 
   it("resolves on the terminal response and leaves the port to the Bridge", async () => {
     const fake = fakePort();
-    const settled = requestHandoff(request, () => fake.port);
+    const settled = requestHandoff(request, "manual", () => fake.port);
     fake.deliver({ result: "callback", url: "https://app.example.com/sso/acs", method: "GET" });
 
     await expect(settled).resolves.toEqual({
@@ -61,7 +63,7 @@ describe("requestHandoff", () => {
 
   it("tells a disconnect with no reply apart from a response", async () => {
     const fake = fakePort();
-    const settled = requestHandoff(request, () => fake.port);
+    const settled = requestHandoff(request, "manual", () => fake.port);
     fake.close();
 
     await expect(settled).resolves.toEqual({ outcome: "disconnected" });
@@ -71,7 +73,7 @@ describe("requestHandoff", () => {
   // response has to win that race or every successful Handoff would read as a crash.
   it("keeps the response when the port closes straight afterwards", async () => {
     const fake = fakePort();
-    const settled = requestHandoff(request, () => fake.port);
+    const settled = requestHandoff(request, "manual", () => fake.port);
     fake.deliver({ result: "declined" });
     fake.close();
 
@@ -83,7 +85,7 @@ describe("requestHandoff", () => {
 
   it("reports a message it cannot read without pretending it was an error", async () => {
     const fake = fakePort();
-    const settled = requestHandoff(request, () => fake.port);
+    const settled = requestHandoff(request, "manual", () => fake.port);
     fake.deliver({ result: "shrug" });
 
     await expect(settled).resolves.toEqual({
@@ -94,7 +96,7 @@ describe("requestHandoff", () => {
 
   it("reports a connect that throws as a disconnect", async () => {
     await expect(
-      requestHandoff(request, () => {
+      requestHandoff(request, "manual", () => {
         throw new Error("Specified native messaging host not found.");
       }),
     ).resolves.toEqual({

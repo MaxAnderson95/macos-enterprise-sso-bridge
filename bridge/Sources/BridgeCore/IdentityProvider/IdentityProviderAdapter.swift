@@ -28,12 +28,24 @@ public struct HandoffPlan: Sendable {
   /// rather than guessing.
   public let destination: URL?
 
+  /// The destination only when the Sign-in request's protocol fixes the Callback there,
+  /// and so the only one a Pre-approved Application may match. Nil when `destination`
+  /// is a display hint, such as a SAML issuer, or when the request carries signs of
+  /// more than one protocol and the adapter cannot say which one Entra will answer.
+  /// See docs/adr/0004-pre-approved-applications-skip-the-approval.md.
+  public let boundDestination: URL?
+
   /// Whether this candidate is the Callback. Only ever asked about a candidate the
   /// core has already admitted; see `CallbackEligibility`.
   public let recognizes: @Sendable (CandidateNavigation) -> Bool
 
-  public init(destination: URL?, recognizes: @escaping @Sendable (CandidateNavigation) -> Bool) {
+  public init(
+    destination: URL?,
+    boundDestination: URL? = nil,
+    recognizes: @escaping @Sendable (CandidateNavigation) -> Bool
+  ) {
     self.destination = destination
+    self.boundDestination = boundDestination
     self.recognizes = recognizes
   }
 }

@@ -20,7 +20,7 @@ Extension: Vitest, which runs TypeScript directly and works whichever bundler is
 
 - Framing round-trips against a real `Pipe`, including split frames, short reads, an absurd length prefix, and EOF mid-frame, each asserting that broken framing writes nothing to stdout.
 - Request decode, including a POST whose `fields` repeat a name.
-- Response encode for all four shapes: `callback` GET, `callback` POST, `declined`, `error`.
+- Response encode for all five shapes: `callback` GET, `callback` POST, `declined`, `approval_required`, `error`.
 - The 1 MiB pre-flight check, asserting that a response just over the cap becomes `callback_too_large` rather than a frame nobody can read.
 - The Entra adapter's `plan`, parameterized over OIDC and SAML Sign-in requests: a derivable destination, a replayable request whose `destination` is nil, and a request with neither `redirect_uri` nor `SAMLRequest` returning nil.
 - The returned plan's `recognizes` closure over a table of candidates: a `redirect_uri` match on scheme, host, port, and path; a `SAMLResponse` query parameter; a urlencoded POST body with each recognized field name; a multipart POST that is correctly not a Callback; a non-HTTPS target; a credentialed target.

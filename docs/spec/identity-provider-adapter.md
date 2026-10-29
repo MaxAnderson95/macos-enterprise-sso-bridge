@@ -14,11 +14,14 @@ protocol IdentityProviderAdapter {
 
 struct HandoffPlan {
     let destination: URL?
+    let boundDestination: URL?
     let recognizes: (CandidateNavigation) -> Bool
 }
 ```
 
 `plan` returning nil means nothing in this Sign-in request is replayable, which the Bridge answers with `unsupported_request`. A plan whose `destination` is nil means the Handoff is replayable but its destination could not be derived, and the Approval says so plainly instead of guessing.
+
+`boundDestination` is the stricter answer: the destination only when the request's protocol fixes the Callback there. The Bridge matches Pre-approved Applications against it and nothing else, because a display hint is not where the credential goes ([ADR 0004](../adr/0004-pre-approved-applications-skip-the-approval.md)).
 
 The plan closes over the Sign-in request, so the core never passes it back on every navigation, and the whole per-Handoff contract is created once at the start of the Handoff. The depth is in that: two questions the core needs answered, what to tell the user and whether this navigation is the Callback, arrive through one call.
 
@@ -29,6 +32,7 @@ The plan closes over the Sign-in request, so the core never passes it back on ev
 - `https://login.microsoftonline.com` as its entry origin, and `https://login.microsoft.com` as an interior origin: a host Entra sends the user to mid sign-in (the passkey page) where no Sign-in request starts.
 - `redirect_uri` extraction from the Sign-in request's query, and matching a candidate against it on scheme, host, port, and path.
 - For SAML, deriving the destination by inflating and parsing the `SAMLRequest` to reach the ACS URL or issuer.
+- The bound destination: the `redirect_uri` when the request carries no `SAMLRequest`, the ACS URL when it carries no `redirect_uri`, and nothing for an issuer or a request carrying both. Entra validates a `redirect_uri` against the client's registration and posts an assertion to the ACS URL, so each is where the Callback lands only when it is the sole protocol in play.
 - The recognized field names `SAMLResponse`, `code`, `id_token`, and `error`.
 - The judgment that a request carrying neither a `redirect_uri` nor a `SAMLRequest` is not replayable.
 

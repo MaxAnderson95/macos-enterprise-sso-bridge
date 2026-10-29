@@ -38,13 +38,18 @@ final class HandoffAppDelegate: NSObject, NSApplicationDelegate {
       onApprove: { [weak self] in self?.approve() },
       onDismiss: { [weak self] in self?.dismiss() }
     )
-    controller.present()
     self.controller = controller
+    if handoff.isPreApproved {
+      approve()
+    } else {
+      controller.present()
+    }
   }
 
   /// The Approval, and the only place a webview is created. The order is the rule ADR
   /// 0002 exists for: the factory runs here, the window grows around what it produced,
-  /// and only then does anything load.
+  /// and only then does anything load. A Pre-approved Application arrives here straight
+  /// from launch, and its window opens onto the webview with no panel first.
   private func approve() {
     let webView = handoff.approve()
     let webViewHandoff = HandoffWebView(

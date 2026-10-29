@@ -1,5 +1,5 @@
 import { parseBridgeResponse, requestMessage } from "./protocol";
-import type { BridgeResponse, SignInRequest } from "./protocol";
+import type { BridgeResponse, HandoffTrigger, SignInRequest } from "./protocol";
 
 /**
  * Both engines reject a hyphen in a native-messaging host name, which is why this is
@@ -36,6 +36,7 @@ function lastErrorMessage(): string | undefined {
  */
 export function requestHandoff(
   request: SignInRequest,
+  trigger: HandoffTrigger,
   connect: () => NativePort = () => chrome.runtime.connectNative(nativeHostName),
 ): Promise<HandoffOutcome> {
   return new Promise((resolve) => {
@@ -77,6 +78,6 @@ export function requestHandoff(
       );
     });
 
-    port.postMessage(requestMessage(request));
+    port.postMessage(requestMessage(request, trigger));
   });
 }

@@ -103,6 +103,8 @@ struct PreApprovedApplicationsTests {
       ("https://app.example.com:443/", "https://app.example.com"),
       ("app.example.com:8443", "https://app.example.com:8443"),
       ("https://app.example.com:8443/sso", "https://app.example.com:8443"),
+      ("https://[::1]/signin", "https://[::1]"),
+      ("https://[2001:db8::1]:8443/signin", "https://[2001:db8::1]:8443"),
     ]
   )
   func editorEntry(input: String, entry: String) {

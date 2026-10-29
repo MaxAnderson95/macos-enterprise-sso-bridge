@@ -77,7 +77,9 @@ public struct PreApprovedApplications: Equatable, Sendable {
     else {
       return nil
     }
-    let entry = port == 443 ? "https://\(host)" : "https://\(host):\(port)"
+    // `host()` strips an IPv6 literal's brackets, which the authority needs back.
+    let authority = host.contains(":") ? "[\(host)]" : host
+    let entry = port == 443 ? "https://\(authority)" : "https://\(authority):\(port)"
     return origin(from: entry) == nil ? nil : entry
   }
 

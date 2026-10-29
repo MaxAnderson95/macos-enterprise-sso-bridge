@@ -112,7 +112,10 @@ final class PreApprovedApplicationsEditor: NSObject, NSTableViewDataSource, NSTa
 
   private func save() {
     PreApprovedApplications.store(entries)
+    // `reloadData()` keeps an in-range selection, which after a removal would point at
+    // different entries, so the selection is cleared along with the button.
     table.reloadData()
+    table.deselectAll(nil)
     removeButton.isEnabled = false
     message.isHidden = true
   }

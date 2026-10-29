@@ -44,28 +44,20 @@ final class HandoffWindowController: NSObject, NSWindowDelegate {
   /// Approval.
   func present() {
     let content = approvalContentView()
-    let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: Self.panelWidth, height: content.fittingSize.height),
-      styleMask: [.titled, .closable],
-      backing: .buffered,
-      defer: false
-    )
-    // Fixed, because the body already carries the destination and the requesting
-    // browser, so a per-state title would be motion without information.
-    window.title = "Enterprise SSO Bridge"
-    window.contentView = content
-    window.delegate = self
-    window.center()
-    window.makeKeyAndOrderFront(nil)
-    self.window = window
-    NSApp.activate()
+    open(content, size: NSSize(width: Self.panelWidth, height: content.fittingSize.height))
   }
 
   /// State 3. The window grows around the webview it was handed, and the footer keeps
   /// the destination on screen, which is the only place it survives once the provider's
-  /// page is up.
+  /// page is up. A Pre-approved Application has no panel to grow from, so its window
+  /// opens at this size, taking focus because Entra may still need the user.
   func showAuthenticating(webView: NSView) {
-    swapContent(to: authenticatingContentView(webView: webView), size: Self.handoffContentSize)
+    let content = authenticatingContentView(webView: webView)
+    if window == nil {
+      open(content, size: Self.handoffContentSize)
+    } else {
+      swapContent(to: content, size: Self.handoffContentSize)
+    }
   }
 
   /// State 4. The Callback was recognized and stopped and the response is going out, so
@@ -96,6 +88,24 @@ final class HandoffWindowController: NSObject, NSWindowDelegate {
 
   @objc private func dismiss() {
     onDismiss()
+  }
+
+  private func open(_ content: NSView, size: NSSize) {
+    let window = NSWindow(
+      contentRect: NSRect(origin: .zero, size: size),
+      styleMask: [.titled, .closable],
+      backing: .buffered,
+      defer: false
+    )
+    // Fixed, because the body already carries the destination and the requesting
+    // browser, so a per-state title would be motion without information.
+    window.title = "Enterprise SSO Bridge"
+    window.contentView = content
+    window.delegate = self
+    window.center()
+    window.makeKeyAndOrderFront(nil)
+    self.window = window
+    NSApp.activate()
   }
 
   private func swapContent(to content: NSView, size: NSSize) {

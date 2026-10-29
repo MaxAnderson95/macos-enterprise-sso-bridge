@@ -3,10 +3,17 @@
 // out. Locally active claims never expire while their caller is waiting for the Bridge.
 
 import { engineApi } from "./engineApi";
-import type { FormField, SignInRequest } from "./protocol";
+import type { FormField, HandoffTrigger, SignInRequest } from "./protocol";
 
 /** An attempt abandoned an hour ago must never replay, so a stale capture is ignored. */
 export const captureMaxAgeMs = 10 * 60 * 1000;
+
+/**
+ * How long after a Handoff finishes that its tab may not start another automatically.
+ * An Application can answer its Callback with a fresh authorization, and without this a
+ * pre-approved one that keeps doing so would sign in over and over with no click.
+ */
+export const automaticRestartDelayMs = 30 * 1000;
 
 const inheritedClaimMaxAgeMs = 30 * 60 * 1000;
 
@@ -39,13 +46,17 @@ export interface TabSession {
    * Marks a Handoff as running for this tab, or returns false when one already is, in
    * which case the caller does nothing at all: the claim was not taken and must not be
    * released. An inherited claim older than thirty minutes may be replaced; a claim
-   * active in this instance never expires.
+   * active in this instance never expires. An automatic claim is also refused within
+   * thirty seconds of the tab's previous Handoff finishing; a manual one never is.
    */
-  claimHandoff(tabId: number, startedAt: number): Promise<boolean>;
+  claimHandoff(tabId: number, startedAt: number, trigger: HandoffTrigger): Promise<boolean>;
   /** The capture for a tab if one is younger than ten minutes, otherwise null. */
   readCapture(tabId: number, now: number): Promise<SignInRequest | null>;
-  /** Releases the claim, and spends the capture when the Handoff succeeded. */
-  finishHandoff(tabId: number, end: HandoffEnd): Promise<void>;
+  /**
+   * Releases the claim, spends the capture when the Handoff succeeded, and remembers when
+   * it finished for the automatic-restart delay.
+   */
+  finishHandoff(tabId: number, end: HandoffEnd, finishedAt: number): Promise<void>;
   /** Leaves a POST Callback for the Relay page that is about to load in this tab. */
   storeCallback(tabId: number, callback: PostCallback): Promise<void>;
   /**
@@ -74,6 +85,7 @@ interface StoredCapture {
 
 const captureKey = (tabId: number) => `capture:${tabId}`;
 const handoffKey = (tabId: number) => `handoff:${tabId}`;
+const finishedKey = (tabId: number) => `finished:${tabId}`;
 const callbackKey = (tabId: number) => `callback:${tabId}`;
 const stateKey = (tabId: number) => `state:${tabId}`;
 
@@ -143,13 +155,22 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
       await area.set({ [captureKey(tabId)]: stored });
     },
 
-    claimHandoff(tabId, startedAt) {
+    claimHandoff(tabId, startedAt, trigger) {
       return serialized(tabId, async () => {
         if (activeClaims.has(tabId)) {
           return false;
         }
         const key = handoffKey(tabId);
-        const existing = (await area.get([key]))[key];
+        const stored = await area.get([key, finishedKey(tabId)]);
+        const finishedAt = stored[finishedKey(tabId)];
+        if (
+          trigger === "automatic" &&
+          typeof finishedAt === "number" &&
+          startedAt - finishedAt < automaticRestartDelayMs
+        ) {
+          return false;
+        }
+        const existing = stored[key];
         const stale =
           typeof existing === "object" &&
           existing !== null &&
@@ -176,12 +197,13 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
 
     // Releasing runs through the same chain as claiming, so a release cannot land
     // between a claim's read and its write.
-    finishHandoff(tabId, end) {
+    finishHandoff(tabId, end, finishedAt) {
       return serialized(tabId, async () => {
         activeClaims.delete(tabId);
         await area.remove(
           end === "success" ? [handoffKey(tabId), captureKey(tabId)] : [handoffKey(tabId)],
         );
+        await area.set({ [finishedKey(tabId)]: finishedAt });
       });
     },
 
@@ -217,6 +239,7 @@ export function tabSession(area: SessionArea = sessionStorage()): TabSession {
         activeClaims.delete(tabId);
         await area.remove([
           handoffKey(tabId),
+          finishedKey(tabId),
           captureKey(tabId),
           callbackKey(tabId),
           stateKey(tabId),

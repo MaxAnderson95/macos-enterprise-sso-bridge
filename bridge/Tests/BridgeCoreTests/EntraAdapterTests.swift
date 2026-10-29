@@ -173,9 +173,9 @@ struct AdapterSelectionTests {
 struct UnsupportedRequestTests {
   private func received(_ url: String) throws -> SignInRequest {
     let harness = WireHarness()
-    let payload = Data(#"{"version":1,"url":"\#(url)","method":"GET"}"#.utf8)
+    let payload = Data(#"{"version":2,"trigger":"manual","url":"\#(url)","method":"GET"}"#.utf8)
     try harness.writeAndClose(WireHarness.framed(payload))
-    guard case .request(let request) = try harness.channel.receiveRequest() else {
+    guard case .request(let request, _) = try harness.channel.receiveRequest() else {
       throw UnexpectedAnswer()
     }
     return request

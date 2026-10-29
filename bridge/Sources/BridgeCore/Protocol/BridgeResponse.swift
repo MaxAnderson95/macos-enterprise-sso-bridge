@@ -59,10 +59,14 @@ public enum BridgeErrorCode: Equatable, Sendable {
 ///
 /// An enum with associated values rather than a bag of optionals, so the Bridge
 /// cannot build a half-populated response and every later termination path has to
-/// name which of the three outcomes it is producing.
+/// name which of the outcomes it is producing.
 public enum BridgeResponse: Equatable, Sendable {
   case callback(Callback)
   case declined
+  /// An automatic Handoff whose destination is not a Pre-approved Application. A result
+  /// rather than an error: nothing failed, the Bridge only declined to interrupt the user
+  /// with an Approval they did not ask for, and the toolbar action still works.
+  case approvalRequired
   case error(BridgeErrorCode, detail: String?)
 
   /// The outcome and, for a Callback, its host. Never a path, a query, or a field.
@@ -72,6 +76,8 @@ public enum BridgeResponse: Equatable, Sendable {
       "callback \(callback.method.rawValue) \(callback.url.host() ?? "?")"
     case .declined:
       "declined"
+    case .approvalRequired:
+      "approval required"
     case .error(let code, _):
       "error \(code.wireName)"
     }
@@ -101,6 +107,8 @@ extension BridgeResponse: Encodable {
       }
     case .declined:
       try container.encode("declined", forKey: .result)
+    case .approvalRequired:
+      try container.encode("approval_required", forKey: .result)
     case .error(let code, let detail):
       try container.encode("error", forKey: .result)
       try container.encode(code.wireName, forKey: .code)

@@ -136,3 +136,61 @@ struct ApprovalPromptTests {
     #expect(prompt(destination: nil).providerHost == "login.microsoftonline.com")
   }
 }
+
+/// ADR 0004's table, row by row. The Extension's trigger can only make the Bridge
+/// stricter: an automatic start to anywhere unlisted is answered without a window, and
+/// nothing but the derived destination skips the Approval.
+@Suite("How a Handoff starts")
+struct HandoffStartTests {
+  private func start(_ trigger: HandoffTrigger, preApproved: Bool, spy: WebViewSpy)
+    -> Handoff<WebViewSpy.Made>.Start
+  {
+    Handoff.start(
+      prompt: prompt,
+      trigger: trigger,
+      destinationIsPreApproved: preApproved,
+      makeWebView: spy.make
+    )
+  }
+
+  @Test(
+    "A pre-approved destination skips the Approval whoever started the Handoff",
+    arguments: [HandoffTrigger.manual, .automatic]
+  )
+  func preApproved(trigger: HandoffTrigger) {
+    let spy = WebViewSpy()
+    guard case .handoff(let handoff) = start(trigger, preApproved: true, spy: spy) else {
+      Issue.record("expected a Handoff to run")
+      return
+    }
+    #expect(handoff.isPreApproved)
+    // Made where the Approval would have been given, not when the Handoff is planned.
+    #expect(spy.creations == 0)
+    handoff.approve()
+    #expect(spy.creations == 1)
+    #expect(handoff.phase == .authenticating)
+  }
+
+  @Test("A click to an unlisted destination gets the Approval, as before")
+  func manualNotPreApproved() {
+    let spy = WebViewSpy()
+    guard case .handoff(let handoff) = start(.manual, preApproved: false, spy: spy) else {
+      Issue.record("expected a Handoff to run")
+      return
+    }
+    #expect(!handoff.isPreApproved)
+    #expect(handoff.phase == .awaitingApproval)
+    #expect(spy.creations == 0)
+  }
+
+  @Test("An automatic start to an unlisted destination is answered with no window")
+  func automaticNotPreApproved() {
+    let spy = WebViewSpy()
+    guard case .answer(let response) = start(.automatic, preApproved: false, spy: spy) else {
+      Issue.record("expected an answer instead of a Handoff")
+      return
+    }
+    #expect(response == .approvalRequired)
+    #expect(spy.creations == 0)
+  }
+}

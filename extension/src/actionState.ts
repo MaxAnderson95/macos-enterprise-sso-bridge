@@ -169,6 +169,11 @@ export function handoffVerdict(outcome: HandoffOutcome): HandoffVerdict {
   switch (response.result) {
     case "declined":
       return { state: "cancelled" };
+    case "approval_required":
+      // An automatic Handoff to an Application nobody pre-approved. Nothing failed, and
+      // the toolbar action still replays the capture, so the tab simply goes back to
+      // idle.
+      return { state: "idle" };
     case "error":
       return { state: errorStates[response.code] };
     case "callback":
@@ -250,7 +255,8 @@ export function actionState(
         return;
       }
       await apply(tabId, name);
-      await session.recordState(tabId, name);
+      // Idle is the absence of a record, which is what `clear` and the popup both read.
+      await (name === "idle" ? session.clearState(tabId) : session.recordState(tabId, name));
     },
 
     // Every navigation in every tab reaches this, so it asks before it writes.

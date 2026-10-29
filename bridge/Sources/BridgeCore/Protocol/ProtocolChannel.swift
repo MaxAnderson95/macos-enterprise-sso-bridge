@@ -5,7 +5,10 @@ import Foundation
 /// are installed by hand and independently, so nothing stops a new `.pkg` from
 /// meeting last month's extension.
 public enum ProtocolVersion {
-  public static let supported = 1
+  /// The request's `trigger` is why this is 2: a version 1 Bridge ignores unknown keys,
+  /// so it would show an Approval for every Sign-in request the Extension captured
+  /// instead of answering `unsupported_version`.
+  public static let supported = 2
 }
 
 /// One request in, one terminal response out, then the process exits.
@@ -14,10 +17,11 @@ public enum ProtocolVersion {
 /// codecs, because both are decisions about what to say back, and saying something
 /// back exactly once is this type's whole job.
 public final class ProtocolChannel {
-  /// What a request frame earned: either a Sign-in request to act on, or the terminal
-  /// response that answers it without the rest of the Bridge ever being involved.
+  /// What a request frame earned: either a Sign-in request to act on and who started
+  /// it, or the terminal response that answers it without the rest of the Bridge ever
+  /// being involved.
   public enum ReceivedRequest: Equatable {
-    case request(SignInRequest)
+    case request(SignInRequest, HandoffTrigger)
     case answer(BridgeResponse)
   }
 
@@ -53,12 +57,16 @@ public final class ProtocolChannel {
       return .answer(.error(code, detail: nil))
     }
     guard let message = try? decoder.decode(RequestMessage.self, from: payload) else {
-      BridgeLog.wire.error("request frame does not match the version 1 schema")
+      BridgeLog.wire.error(
+        "request frame does not match the version \(ProtocolVersion.supported, privacy: .public) schema"
+      )
       return .answer(.error(.malformedRequest, detail: "request schema"))
     }
 
-    BridgeLog.wire.info("received \(message.signInRequest.logSummary, privacy: .public)")
-    return .request(message.signInRequest)
+    BridgeLog.wire.info(
+      "received \(message.signInRequest.logSummary, privacy: .public), \(message.trigger.rawValue, privacy: .public)"
+    )
+    return .request(message.signInRequest, message.trigger)
   }
 
   /// Writes the terminal response and returns the response that actually went, which is

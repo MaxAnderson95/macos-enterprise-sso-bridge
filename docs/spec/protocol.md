@@ -9,12 +9,14 @@ Framing is whatever the engines already do: a 32-bit native-endian length prefix
 Extension to Bridge, exactly one message:
 
 ```json
-{ "version": 1, "url": "https://login.microsoftonline.com/...", "method": "GET" }
+{ "version": 2, "trigger": "manual", "url": "https://login.microsoftonline.com/...", "method": "GET" }
 ```
 
 ```json
-{ "version": 1, "url": "https://login.microsoftonline.com/...", "method": "POST", "fields": [["SAMLRequest", "..."], ["RelayState", "..."]] }
+{ "version": 2, "trigger": "automatic", "url": "https://login.microsoftonline.com/...", "method": "POST", "fields": [["SAMLRequest", "..."], ["RelayState", "..."]] }
 ```
+
+`trigger` is required: `manual` when the user started the Handoff with the toolbar action or Try again, `automatic` when the Extension started it on capturing the Sign-in request. The Bridge treats it as the Extension's claim, so it can only make the Bridge stricter: an automatic Handoff whose destination is not a Pre-approved Application is answered `approval_required` instead of showing the Approval, and neither value skips the Approval. See [ADR 0004](../adr/0004-pre-approved-applications-skip-the-approval.md).
 
 `method` is required. `fields` is present only for POST and is an array of `[name, value]` pairs rather than an object, because a form can repeat a name and an object would silently drop one. The Extension decodes Chromium's `ArrayBuffer` form values to strings before sending.
 
@@ -28,8 +30,11 @@ Bridge to Extension, exactly one message, tagged on `result`:
 { "result": "callback", "url": "https://app.example.com/sso/acs", "method": "GET" }
 { "result": "callback", "url": "https://app.example.com/sso/acs", "method": "POST", "fields": [["SAMLResponse", "..."], ["RelayState", "..."]] }
 { "result": "declined" }
+{ "result": "approval_required" }
 { "result": "error", "code": "navigation_failed", "detail": "NSURLErrorDomain -1003" }
 ```
+
+`approval_required` answers an automatic Handoff whose destination is not a Pre-approved Application. It is a result like `declined`, not an error code: nothing failed, the Bridge exited without a window, and the toolbar action still replays the same Sign-in request with an Approval.
 
 A discriminated union, not a bag of optionals: a Swift enum with associated values on one side and a TypeScript discriminated union on the other, so neither side can build a half-populated response and both get exhaustiveness checking. The types are hand-written against this document on each side. Three message shapes do not justify a JSON Schema and two generators in a build that is SwiftPM plus a bundler; a structural mismatch fails loudly at the first message, which is the opposite of the silent-failure risk that makes the entry origins generated (see [build.md](build.md)).
 
@@ -50,7 +55,9 @@ The Bridge sends the code and an optional `detail`. All user-facing copy lives i
 
 ## Version skew
 
-The Extension sends `version: 1`. A Bridge that does not implement that version replies `{"result": "error", "code": "unsupported_version", "bridgeVersion": N}` and exits, so the Extension can say "install the matching release of both" instead of showing a parse failure. The field is an integer, bumped only on a breaking change.
+The Extension sends `version: 2`. A Bridge that does not implement that version replies `{"result": "error", "code": "unsupported_version", "bridgeVersion": N}` and exits, so the Extension can say "install the matching release of both" instead of showing a parse failure. The field is an integer, bumped only on a breaking change.
+
+Adding `trigger` was one. Request decoding ignores unknown keys, so a version 1 Bridge would accept a request carrying `"trigger": "automatic"` and show an Approval for every Sign-in request the Extension captured on its own. With the bump it answers `unsupported_version` instead.
 
 This matters because the two halves are installed by hand and independently: nothing stops a new `.pkg` from meeting last month's extension.
 

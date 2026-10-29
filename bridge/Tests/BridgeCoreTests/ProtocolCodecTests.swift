@@ -15,7 +15,8 @@ struct RequestDecodingTests {
       RequestMessage.self,
       from: Fixtures.data("request-get.json")
     )
-    #expect(message.version == 1)
+    #expect(message.version == 2)
+    #expect(message.trigger == .manual)
     #expect(message.signInRequest.method == .get)
     #expect(message.signInRequest.url.host() == "login.microsoftonline.com")
   }
@@ -30,6 +31,7 @@ struct RequestDecodingTests {
       Issue.record("expected a POST Sign-in request")
       return
     }
+    #expect(message.trigger == .automatic)
     #expect(fields.map(\.name) == ["SAMLRequest", "RelayState", "RelayState"])
     #expect(fields[1].value == "https://app.example.com/sso/start")
     #expect(fields[2].value == "second-value-under-the-same-name")
@@ -38,24 +40,28 @@ struct RequestDecodingTests {
   @Test("A POST with no fields decodes to none rather than failing")
   func postWithoutFields() throws {
     let message = try decode(
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"POST"}"#)
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"POST"}"#
+    )
     #expect(
       message.signInRequest
         == .post(url: URL(string: "https://login.microsoftonline.com/x")!, fields: []))
   }
 
   @Test(
-    "Anything that is not a valid version 1 request is refused",
+    "Anything that is not a valid version 2 request is refused",
     arguments: [
-      #"{"version":1,"method":"GET"}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x"}"#,
-      #"{"version":1,"url":"/relative","method":"GET"}"#,
-      #"{"version":1,"url":"not a url at all","method":"GET"}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"PUT"}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"get"}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"GET","fields":[["a","b"]]}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"POST","fields":[["a"]]}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"POST","fields":{"a":"b"}}"#,
+      #"{"version":2,"url":"https://login.microsoftonline.com/x","method":"GET"}"#,
+      #"{"version":2,"trigger":"sometimes","url":"https://login.microsoftonline.com/x","method":"GET"}"#,
+      #"{"version":2,"trigger":"Manual","url":"https://login.microsoftonline.com/x","method":"GET"}"#,
+      #"{"version":2,"trigger":"manual","method":"GET"}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x"}"#,
+      #"{"version":2,"trigger":"manual","url":"/relative","method":"GET"}"#,
+      #"{"version":2,"trigger":"manual","url":"not a url at all","method":"GET"}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"PUT"}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"get"}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"GET","fields":[["a","b"]]}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"POST","fields":[["a"]]}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"POST","fields":{"a":"b"}}"#,
     ]
   )
   func invalidRequests(json: String) {
@@ -97,6 +103,11 @@ struct ResponseEncodingTests {
     #expect(try encoded(.declined) == Fixtures.object("response-declined.json"))
   }
 
+  @Test("approval_required is a result, not an error")
+  func approvalRequired() throws {
+    #expect(try encoded(.approvalRequired) == Fixtures.object("response-approval-required.json"))
+  }
+
   @Test("An error carries its code and detail")
   func error() throws {
     let response = BridgeResponse.error(.navigationFailed, detail: "NSURLErrorDomain -1003")
@@ -105,7 +116,8 @@ struct ResponseEncodingTests {
 
   @Test("unsupported_version carries the version the Bridge implements")
   func unsupportedVersion() throws {
-    let response = BridgeResponse.error(.unsupportedVersion(bridgeVersion: 1), detail: nil)
+    let response = BridgeResponse.error(
+      .unsupportedVersion(bridgeVersion: ProtocolVersion.supported), detail: nil)
     #expect(try encoded(response) == Fixtures.object("response-unsupported-version.json"))
   }
 

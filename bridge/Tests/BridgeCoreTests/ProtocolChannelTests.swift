@@ -11,20 +11,33 @@ struct ProtocolChannelTests {
     return try harness.channel.receiveRequest()
   }
 
-  @Test("A valid request is handed back to be acted on")
+  @Test("A valid request is handed back to be acted on, with who started it")
   func validRequest() throws {
     let received = try receiving(
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"GET"}"#
+      #"{"version":2,"trigger":"automatic","url":"https://login.microsoftonline.com/x","method":"GET"}"#
     )
-    #expect(received == .request(.get(url: URL(string: "https://login.microsoftonline.com/x")!)))
+    #expect(
+      received
+        == .request(.get(url: URL(string: "https://login.microsoftonline.com/x")!), .automatic))
   }
 
   @Test("A version the Bridge does not implement answers unsupported_version")
   func unsupportedVersion() throws {
-    let received = try receiving(#"{"version":2,"url":"https://login.microsoftonline.com/x"}"#)
+    let received = try receiving(#"{"version":3,"url":"https://login.microsoftonline.com/x"}"#)
     #expect(
-      received == .answer(.error(.unsupportedVersion(bridgeVersion: 1), detail: nil))
+      received == .answer(.error(.unsupportedVersion(bridgeVersion: 2), detail: nil))
     )
+  }
+
+  // A version 1 Extension sends no trigger, and decoding ignores unknown keys, so this is
+  // the only thing standing between it and an Approval for every Sign-in request a newer
+  // Extension captured on its own.
+  @Test("A whole, valid version 1 request answers unsupported_version")
+  func versionOne() throws {
+    let received = try receiving(
+      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"GET"}"#
+    )
+    #expect(received == .answer(.error(.unsupportedVersion(bridgeVersion: 2), detail: nil)))
   }
 
   // Decided before the rest of the schema is read, because a version the Bridge does
@@ -32,7 +45,7 @@ struct ProtocolChannelTests {
   @Test("The version is judged before the schema is")
   func versionBeatsSchema() throws {
     let received = try receiving(#"{"version":99,"nothing":"else is valid here"}"#)
-    #expect(received == .answer(.error(.unsupportedVersion(bridgeVersion: 1), detail: nil)))
+    #expect(received == .answer(.error(.unsupportedVersion(bridgeVersion: 2), detail: nil)))
   }
 
   @Test(
@@ -40,9 +53,10 @@ struct ProtocolChannelTests {
     arguments: [
       "not json at all",
       #"{"url":"https://login.microsoftonline.com/x","method":"GET"}"#,
-      #"{"version":"1","url":"https://login.microsoftonline.com/x","method":"GET"}"#,
-      #"{"version":1,"url":"https://login.microsoftonline.com/x","method":"TRACE"}"#,
-      #"{"version":1,"url":"javascript:alert(1)","method":"GET"}"#,
+      #"{"version":"2","trigger":"manual","url":"https://login.microsoftonline.com/x","method":"GET"}"#,
+      #"{"version":2,"trigger":"manual","url":"https://login.microsoftonline.com/x","method":"TRACE"}"#,
+      #"{"version":2,"trigger":"manual","url":"javascript:alert(1)","method":"GET"}"#,
+      #"{"version":2,"url":"https://login.microsoftonline.com/x","method":"GET"}"#,
     ]
   )
   func malformedRequest(json: String) throws {
@@ -125,6 +139,7 @@ struct LogSummaryTests {
     )
     #expect(callback.logSummary == "callback POST app.example.com")
     #expect(BridgeResponse.declined.logSummary == "declined")
+    #expect(BridgeResponse.approvalRequired.logSummary == "approval required")
     #expect(BridgeResponse.error(.internalFailure, detail: "x").logSummary == "error internal")
   }
 }

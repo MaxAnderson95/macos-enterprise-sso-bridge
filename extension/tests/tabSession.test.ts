@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captureMaxAgeMs, tabSession } from "../src/tabSession";
+import { automaticRestartDelayMs, captureMaxAgeMs, tabSession } from "../src/tabSession";
 import type { PostCallback, SessionArea } from "../src/tabSession";
 import type { SignInRequest } from "../src/protocol";
 import { fakeSessionArea } from "./helpers/fakeSessionArea";
@@ -69,13 +69,13 @@ describe("tabSession", () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
 
-    await expect(session.claimHandoff(7, now)).resolves.toBe(true);
-    await expect(session.claimHandoff(7, now)).resolves.toBe(false);
+    await expect(session.claimHandoff(7, now, "manual")).resolves.toBe(true);
+    await expect(session.claimHandoff(7, now, "manual")).resolves.toBe(false);
     // Another tab's Handoff is nobody else's business.
-    await expect(session.claimHandoff(8, now)).resolves.toBe(true);
+    await expect(session.claimHandoff(8, now, "manual")).resolves.toBe(true);
 
-    await session.finishHandoff(7, "failure");
-    await expect(session.claimHandoff(7, now)).resolves.toBe(true);
+    await session.finishHandoff(7, "failure", now);
+    await expect(session.claimHandoff(7, now, "manual")).resolves.toBe(true);
   });
 
   // The opposite of the Relay page's consume-once rule, on purpose: replaying a Sign-in
@@ -85,13 +85,43 @@ describe("tabSession", () => {
     const session = tabSession(area);
 
     await session.recordCapture(7, request, now);
-    await session.claimHandoff(7, now);
-    await session.finishHandoff(7, "failure");
+    await session.claimHandoff(7, now, "manual");
+    await session.finishHandoff(7, "failure", now);
     await expect(session.readCapture(7, now)).resolves.toEqual(request);
 
-    await session.claimHandoff(7, now);
-    await session.finishHandoff(7, "success");
+    await session.claimHandoff(7, now, "manual");
+    await session.finishHandoff(7, "success", now);
     await expect(session.readCapture(7, now)).resolves.toBeNull();
+  });
+
+  // An Application can answer its Callback with a fresh authorization, which is captured
+  // like any other Sign-in request. Without the delay a pre-approved one could sign in
+  // over and over with no click.
+  it.each(["success", "failure"] as const)(
+    "refuses an automatic start within thirty seconds of a Handoff ending in %s",
+    async (end) => {
+      const { area } = fakeSessionArea();
+      const session = tabSession(area);
+      await session.claimHandoff(7, now, "manual");
+      await session.finishHandoff(7, end, now);
+
+      const justBefore = now + automaticRestartDelayMs - 1;
+      await expect(session.claimHandoff(7, justBefore, "automatic")).resolves.toBe(false);
+      // Another tab's last Handoff is not this one's.
+      await expect(session.claimHandoff(8, justBefore, "automatic")).resolves.toBe(true);
+      await expect(
+        session.claimHandoff(7, now + automaticRestartDelayMs, "automatic"),
+      ).resolves.toBe(true);
+    },
+  );
+
+  it("lets the toolbar click start a Handoff inside the automatic-restart delay", async () => {
+    const { area } = fakeSessionArea();
+    const session = tabSession(area);
+    await session.claimHandoff(7, now, "automatic");
+    await session.finishHandoff(7, "failure", now);
+
+    await expect(session.claimHandoff(7, now + 1, "manual")).resolves.toBe(true);
   });
 
   it("grants only one of two claims that overlap on the same tab", async () => {
@@ -100,22 +130,25 @@ describe("tabSession", () => {
 
     // Both clicks start before either read has answered, which is the ordering a
     // second toolbar click during the first click's read produces.
-    const claims = await Promise.all([session.claimHandoff(7, now), session.claimHandoff(7, now)]);
+    const claims = await Promise.all([
+      session.claimHandoff(7, now, "manual"),
+      session.claimHandoff(7, now, "manual"),
+    ]);
 
     expect(claims).toEqual([true, false]);
   });
 
   it("recovers an inherited claim after thirty minutes, once even for overlapping clicks", async () => {
     const { area } = slowSessionArea();
-    await tabSession(area).claimHandoff(7, now);
+    await tabSession(area).claimHandoff(7, now, "manual");
     const afterEviction = tabSession(area);
     const thirtyMinutesLater = now + 30 * 60 * 1000;
 
-    await expect(afterEviction.claimHandoff(7, thirtyMinutesLater)).resolves.toBe(false);
+    await expect(afterEviction.claimHandoff(7, thirtyMinutesLater, "manual")).resolves.toBe(false);
     await afterEviction.recordCapture(7, request, thirtyMinutesLater);
     const claims = await Promise.all([
-      afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
-      afterEviction.claimHandoff(7, thirtyMinutesLater + 1),
+      afterEviction.claimHandoff(7, thirtyMinutesLater + 1, "manual"),
+      afterEviction.claimHandoff(7, thirtyMinutesLater + 1, "manual"),
     ]);
     expect(claims).toEqual([true, false]);
     await expect(afterEviction.readCapture(7, thirtyMinutesLater + 1)).resolves.toEqual(request);
@@ -124,19 +157,21 @@ describe("tabSession", () => {
   it("never expires a claim still active in the same background instance", async () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
-    await session.claimHandoff(7, now);
+    await session.claimHandoff(7, now, "manual");
 
-    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000)).resolves.toBe(false);
-    await session.finishHandoff(7, "failure");
-    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000)).resolves.toBe(true);
+    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000, "manual")).resolves.toBe(false);
+    await session.finishHandoff(7, "failure", now);
+    await expect(session.claimHandoff(7, now + 24 * 60 * 60 * 1000, "manual")).resolves.toBe(true);
   });
 
-  it("drops the capture, the claim, the callback, and the state when the tab closes", async () => {
+  it("drops the capture, the claim, the finish time, the callback, and the state when the tab closes", async () => {
     const { area, items } = fakeSessionArea();
     const session = tabSession(area);
 
+    await session.claimHandoff(7, now, "manual");
+    await session.finishHandoff(7, "failure", now);
     await session.recordCapture(7, request, now);
-    await session.claimHandoff(7, now);
+    await session.claimHandoff(7, now, "manual");
     await session.storeCallback(7, callback);
     await session.recordState(7, "noReply");
     await session.forgetTab(7);
@@ -164,13 +199,13 @@ describe("tabSession", () => {
     const { area } = fakeSessionArea();
 
     await tabSession(area).recordCapture(7, request, now);
-    await expect(tabSession(area).claimHandoff(7, now)).resolves.toBe(true);
+    await expect(tabSession(area).claimHandoff(7, now, "manual")).resolves.toBe(true);
 
     const afterEviction = tabSession(area);
     await expect(afterEviction.readCapture(7, now)).resolves.toEqual(request);
-    await expect(afterEviction.claimHandoff(7, now)).resolves.toBe(false);
+    await expect(afterEviction.claimHandoff(7, now, "manual")).resolves.toBe(false);
 
-    await afterEviction.finishHandoff(7, "success");
+    await afterEviction.finishHandoff(7, "success", now);
     await expect(tabSession(area).readCapture(7, now)).resolves.toBeNull();
   });
 
@@ -205,9 +240,9 @@ describe("tabSession", () => {
     const { area } = fakeSessionArea();
     const session = tabSession(area);
 
-    await session.claimHandoff(7, now);
+    await session.claimHandoff(7, now, "manual");
     await session.storeCallback(7, callback);
-    await session.finishHandoff(7, "success");
+    await session.finishHandoff(7, "success", now);
 
     await expect(session.takeCallback(7)).resolves.toEqual(callback);
   });

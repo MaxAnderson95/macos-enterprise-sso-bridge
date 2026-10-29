@@ -26,6 +26,16 @@ The Extension still does not judge replayability; a marker-bearing request the a
 
 `storage.session` rather than a module-level `Map`, because the Chromium MV3 service worker can be evicted between the navigation and the click.
 
+## Starting a Handoff on capture
+
+Recording a capture also starts a Handoff for that tab with `trigger: "automatic"`, so a Pre-approved Application signs in with no click. The Bridge alone decides whether the destination is pre-approved; the Extension never reads the list. For any other Application the Bridge answers `approval_required` without a window, and the tab is left as it was: the in-flight badge is cleared, there is no `!` and no popup, and the capture survives for the toolbar action to replay. See [ADR 0004](../adr/0004-pre-approved-applications-skip-the-approval.md).
+
+The start waits for the captured page to finish loading. The load that carried the Sign-in request reaches `tabs.onUpdated` with a "loading" status, which clears the action state, so a Handoff started at the moment of capture would lose its in-flight state and could never publish a failure. On the "complete" status the Extension checks that the tab is still on an identity-provider origin, which the host permissions let it read, and does nothing otherwise: a browser that still holds a provider session is sent straight back to the Application, and there is nothing left to sign in to. The pending start is kept in memory only; if the background is evicted before the load completes, nothing starts and the toolbar action works as before.
+
+An automatic Handoff goes through the same claim as a click, so it does not start while another Handoff is in flight for the tab, and a click during one is ignored as usual. An automatic failure gets the same badge, title, and popup as a manual one; `approval_required` is not a failure.
+
+**Loop guard.** An Application can answer its Callback with a fresh authorization (see the capture rule above), which is captured like any other Sign-in request. The claim therefore refuses an automatic Handoff for a tab whose previous Handoff finished, successfully or not, less than thirty seconds earlier. The finish time lives in `storage.session` next to the claim. The toolbar click is never refused by it, and for a pre-approved destination still skips the Approval.
+
 One known gap, from the permissions research: Gecko can miss a Sign-in request issued immediately after a browser restart, before the listener is primed. The user-facing path for that is `unsupported_request`, whose copy sends them back to the Application's login page.
 
 ## The toolbar action
@@ -37,7 +47,7 @@ On click:
 1. Ignore the click if a Handoff is already in flight for this tab.
 2. Check the active tab's origin against the generated identity-provider origins: the entry origins plus the interior origins Entra moves the user through, which today adds `login.microsoft.com` for the passkey page. A mismatch is the "wrong page" state. The check is about where the user is, not where the request came from; the capture below is what gets replayed, whichever provider page the tab has reached since.
 3. Read the capture for this tab, bounded to ten minutes. Anything older is ignored, so an attempt abandoned an hour ago never replays.
-4. `connectNative` and send the request frame.
+4. `connectNative` and send the request frame with `trigger: "manual"`. Try again sends `manual` too.
 5. On the terminal response, re-validate any returned URL (HTTPS, no embedded credentials), then navigate.
 
 Handoff claims live in `storage.session`. The background instance also tracks the claims it acquired, which never expire while that instance is waiting for the Bridge. After a background restart, a click may replace an inherited claim once its `startedAt` is more than thirty minutes old. This gives an abandoned claim a recovery path while allowing time for MFA or a password change before an inherited claim is replaced. It does not time out the native-messaging exchange or extend the capture's ten-minute lifetime: an expired capture still sends the user back to the Application's login page. Finishing a Handoff or closing its tab releases the claim; navigation only clears the action state.
@@ -85,6 +95,7 @@ User-facing copy says "Enterprise SSO Bridge" on first mention and "the Bridge" 
 | Unknown code | `!` | Sign-in failed for an unrecognized reason. | Sign-in failed for an unrecognized reason. Check that Enterprise SSO Bridge and this extension are the same version. |
 | Rejected callback URL | `!` | The sign-in response pointed somewhere unexpected. | The sign-in response pointed somewhere unexpected and was not opened. |
 | `declined` | (cleared) | Sign-in cancelled. Click to start again. | none |
+| `approval_required` | (cleared) | Sign in with Enterprise SSO Bridge | none |
 
 A declined Approval is not a failure: no `!`, no red, no popup. The user clicked Cancel a second earlier and already knows what happened, and a cancellation that looks like an error teaches them to distrust the red badge.
 
@@ -113,3 +124,5 @@ When private-browsing access has not been granted the extension does not run in 
 There is none. No options page, no configuration file, no policy.
 
 Entry origins are build-time constants, the install decisions rule out policies and files, and nothing in v1 has a setting worth exposing. An empty options page added to fill a slot in the manifest is the extension point this project's rules say not to build.
+
+The one user setting, the list of Pre-approved Applications, lives with the Bridge in its own preferences domain (see [bridge.md](bridge.md#pre-approved-applications)). Extension code could write a list kept in extension storage, and the Extension is the party that list is meant to constrain.

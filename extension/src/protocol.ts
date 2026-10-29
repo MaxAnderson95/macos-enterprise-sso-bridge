@@ -2,8 +2,18 @@
 // Bridge's Swift types are the other hand-written half; fixtures/protocol/ is what
 // holds the two to the same shape.
 
-/** The wire version this Extension sends. */
-export const protocolVersion = 1;
+/**
+ * The wire version this Extension sends. `trigger` is why it is 2: a version 1 Bridge
+ * ignores unknown keys, so it would show an Approval for every captured Sign-in request
+ * instead of answering `unsupported_version`.
+ */
+export const protocolVersion = 2;
+
+/**
+ * Who started the Handoff: the toolbar click or Try again, or the Extension on capturing
+ * a Sign-in request. The Bridge only ever reads `automatic` as a reason to be stricter.
+ */
+export type HandoffTrigger = "manual" | "automatic";
 
 /** One `name=value` pair, as a two-element array, because a form can repeat a name. */
 export type FormField = [name: string, value: string];
@@ -13,8 +23,8 @@ export type SignInRequest =
   { url: string; method: "GET" } | { url: string; method: "POST"; fields: FormField[] };
 
 /** The exact object posted to the native-messaging port. */
-export function requestMessage(request: SignInRequest) {
-  return { version: protocolVersion, ...request };
+export function requestMessage(request: SignInRequest, trigger: HandoffTrigger) {
+  return { version: protocolVersion, trigger, ...request };
 }
 
 /**
@@ -40,6 +50,7 @@ export type BridgeResponse =
   | { result: "callback"; url: string; method: "GET" }
   | { result: "callback"; url: string; method: "POST"; fields: FormField[] }
   | { result: "declined" }
+  | { result: "approval_required" }
   | ({ result: "error" } & BridgeError);
 
 const knownErrorCodes = [
@@ -117,6 +128,8 @@ export function parseBridgeResponse(message: unknown): BridgeResponse | null {
   switch (message.result) {
     case "declined":
       return { result: "declined" };
+    case "approval_required":
+      return { result: "approval_required" };
     case "callback": {
       const url = message.url;
       if (typeof url !== "string") {

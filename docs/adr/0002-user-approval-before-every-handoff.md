@@ -1,5 +1,7 @@
 # User approval before every Handoff
 
+Partly superseded by [ADR 0004](0004-pre-approved-applications-skip-the-approval.md): a Handoff to a Pre-approved Application skips the Approval.
+
 Caller authentication proves the Bridge's parent is an Allowed browser and deliberately says nothing about what is running inside it, so a hostile extension in an Allowed browser could ask for any Sign-in request and get back a real token or SAML assertion with no interaction, because platform SSO is designed not to prompt. The Bridge therefore requires an explicit approval in its own window, outside the browser's trust domain, before it instantiates a WKWebView or loads anything: the prompt names the identity provider and the Callback destination derived from the Sign-in request itself, and declining sends a structured decline back over the protocol and exits.
 
 ## Considered options

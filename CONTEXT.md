@@ -29,12 +29,16 @@ The web application the user is signing into. It receives the Callback in the or
 _Avoid_: site, relying party, service provider
 
 **Handoff**:
-One sign-in transaction, from the user's toolbar click to the Callback being delivered to the original tab.
+One sign-in transaction, from the user's toolbar click or the Extension's capture of a Sign-in request to the Callback being delivered to the original tab.
 _Avoid_: session, flow, request
 
 **Approval**:
 The user's confirmation, given in the Bridge's own window, that a Handoff should proceed. Nothing is loaded before it.
 _Avoid_: consent, confirmation dialog, prompt
+
+**Pre-approved Application**:
+An Application whose origin the user listed in the Bridge's preferences, so a Handoff whose Callback goes there proceeds without an Approval.
+_Avoid_: whitelist, allowlist, trusted site, auto-login site
 
 **Sign-in request**:
 The Application's original request to the identity provider (URL, method, and any form fields such as a SAMLRequest), observed by the Extension and replayed by the Bridge to begin a Handoff.

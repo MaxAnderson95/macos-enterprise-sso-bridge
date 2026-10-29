@@ -4,9 +4,9 @@ Clicking the toolbar action and then Sign In on every Handoff became friction on
 
 ## Why this is acceptable now
 
-ADR 0002 framed the threat as a hostile extension in an Allowed browser. The browser narrows that further than the ADR said: both engines refuse `connectNative` to the Bridge from any extension not named in the host manifest's `allowed_origins` / `allowed_extensions`. The callers left are this Extension compromised (a malicious build, a supply-chain change) and native code inside the browser process. Both can already read the session cookies and storage of every Application the user is signed into in that browser, which is the same Applications a user would pre-approve.
+ADR 0002 framed the threat as a hostile extension in an Allowed browser. The browser narrows that further than the ADR said: both engines refuse `connectNative` to the Bridge from any extension not named in the host manifest's `allowed_origins` / `allowed_extensions`. The callers left are this Extension compromised (a malicious build, a supply-chain change) and native code inside the browser process, and their reach differs. Native code in the browser process can already read the session cookies and storage of every Application signed in there, so pre-approval gives it little it did not have. The Extension cannot: its permissions are `webRequest`, `storage`, `nativeMessaging`, and `activeTab`, with host access to the identity provider only, no `cookies` permission, and no access to Application origins. For a compromised Extension, pre-approval is new reach, and this decision accepts it. The Extension is built from this repository and installed by hand with no automatic updates, so a compromised Extension means a compromised source tree or release, and the exposure is limited to Applications the user chose to list.
 
-What a pre-approval adds for such a caller is a fresh Callback (a SAML assertion or an authorization code) for a listed Application, without a click, returned over stdout to the caller rather than to the Application. The list bounds which Applications that applies to. It does not bound who receives the Callback, and nothing on the Bridge side can, because the caller is the delivery path.
+What a pre-approval adds for such a caller is a fresh Callback (a SAML assertion or an authorization code) for a listed Application, without a click, returned over stdout to the caller rather than to the Application. The list bounds which Applications that applies to, provided the destination it is matched against is where the Callback actually lands. So it is matched against the plan's bound destination, which the adapter gives only when the request's protocol fixes the Callback there: a `redirect_uri` on a request with no `SAMLRequest`, or a SAML ACS URL on a request with no `redirect_uri`. A SAML issuer, which names the Application rather than an endpoint, and a request that carries both are never bound. The list does not bound who receives the Callback, and nothing on the Bridge side can, because the caller is the delivery path.
 
 ## Considered options
 
@@ -20,7 +20,7 @@ What a pre-approval adds for such a caller is a fresh Callback (a SAML assertion
 
 The list is keyed on the Callback's origin, not on the client registration. A Sign-in request for a different client whose registered redirect URI sits on a listed origin also passes without an Approval; Entra's consent prompt and the tenant's consent policy are what stop an unknown client, and a consent prompt needs interaction in the Bridge window.
 
-A plan whose destination is nil is never pre-approved, so some SAML Applications always need the toolbar action and the Approval.
+A plan with no bound destination is never pre-approved, so a SAML Application whose request names only an issuer, or no destination at all, always needs the toolbar action and the Approval.
 
 The preferences file is not writable by Extension code. Native code in the browser process could write it, which adds nothing for an actor that can already read the sessions the list protects.
 

@@ -26,7 +26,7 @@
   },
   "permissions": ["webRequest", "storage", "nativeMessaging", "activeTab"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; form-action https:"
+    "extension_pages": "script-src 'self'; object-src 'self'; form-action https: http://localhost:* http://127.0.0.1:*"
   },
   "background": {
     "scripts": ["background.js"]

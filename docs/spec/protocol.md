@@ -83,4 +83,4 @@ stdout carries the protocol and nothing else. All Bridge diagnostics go to `os_l
 
 ## Extension-side re-check
 
-Before navigating, the Extension re-validates the Bridge's `url`: HTTPS only, no embedded credentials. This duplicates part of the Bridge's Callback recognition on purpose. The Extension is the party that drives the original tab, and a Bridge bug or a swapped binary should not be able to point that tab at `http://` or a credentialed URL. It rejects with its own copy and does not navigate.
+Before navigating, the Extension re-validates the Bridge's `url`: HTTPS, or plain HTTP to `localhost` or `127.0.0.1`, and no embedded credentials. This duplicates part of the Bridge's Callback recognition on purpose. The Extension is the party that drives the original tab, and a Bridge bug or a swapped binary should not be able to point that tab at plaintext `http://` off the Mac or a credentialed URL. It rejects with its own copy and does not navigate.

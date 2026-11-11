@@ -51,8 +51,8 @@ function submit(callback: PostCallback) {
   HTMLFormElement.prototype.submit.call(form);
 }
 
-// The extension-pages CSP keeps `form-action https:`, which blocks a plaintext
-// submission target. A blocked submission is otherwise silent: the page would sit
+// The extension-pages CSP keeps `form-action` to HTTPS and loopback HTTP, which blocks
+// a plaintext submission target off the Mac. A blocked submission is otherwise silent: the page would sit
 // there saying it is returning the user to an application it never reached.
 document.addEventListener("securitypolicyviolation", showUnavailable);
 

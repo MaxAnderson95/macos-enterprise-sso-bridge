@@ -223,12 +223,29 @@ struct CallbackEligibilityTests {
     #expect(permits(url))
   }
 
+  /// An Application running on the Mac itself, such as one in a local container,
+  /// registers an `http` loopback `redirect_uri`, which Entra accepts.
+  @Test(
+    "Plain HTTP on loopback is admitted",
+    arguments: [
+      "http://localhost:8080/?code=0.Ac8",
+      "http://LOCALHOST/signin-oidc",
+      "http://127.0.0.1:5000/signin-oidc",
+    ]
+  )
+  func loopbackAdmitted(_ url: String) {
+    #expect(permits(url))
+  }
+
   /// A navigation this refuses is allowed to proceed rather than cancelled. The Bridge
   /// captures Callbacks; it is not a proxy policing the provider's redirect chain.
   @Test(
     "Non-HTTPS, credentialed, and still-at-the-provider navigations are not",
     arguments: [
       "http://other.example.com/acs?SAMLResponse=PHNhbWxw",
+      "http://localhost.example.com/signin-oidc",
+      "http://[::1]:8080/signin-oidc",
+      "http://user:secret@localhost:8080/signin-oidc",
       "https://user:secret@app.example.com/signin-oidc",
       "https://:secret@app.example.com/signin-oidc",
       "https://login.microsoftonline.com/common/reprocess",
@@ -252,6 +269,7 @@ struct CallbackEligibilityTests {
       )
     }
     #expect(refusal("http://other.example.com/acs") == .notEncrypted)
+    #expect(refusal("http://user:secret@localhost/c") == .embeddedCredentials)
     #expect(refusal("https://user:secret@app.example.com/c") == .embeddedCredentials)
     #expect(refusal("https://login.microsoftonline.com/common/reprocess") == .stillAtTheProvider)
     #expect(refusal("https://app.example.com/signin-oidc") == nil)
@@ -335,6 +353,28 @@ struct CallbackCaptureTests {
   )
   func refusedIsNeverCaptured(_ url: String) {
     #expect(verdict(url) == .proceed)
+  }
+
+  /// The redirect a locally run Application gets: Entra appends the trailing slash to a
+  /// `redirect_uri` with no path and answers with a plain GET to the loopback host.
+  @Test("A loopback HTTP redirect_uri is captured, not loaded in the webview")
+  func loopbackRedirectURI() {
+    let plan = EntraAdapter().plan(
+      .get(
+        url: URL(
+          string: "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize"
+            + "?client_id=abc&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2F&response_type=code"
+        )!
+      )
+    )!
+    let callback = URL(string: "http://localhost:8080/?code=0.Ac8&state=opaque")!
+    #expect(
+      CallbackCapture.verdict(
+        for: CandidateNavigation(url: callback, method: .get),
+        plan: plan,
+        identityProviderHost: "login.microsoftonline.com"
+      ) == .capture(.get(url: callback))
+    )
   }
 
   @Test("An ordinary navigation the adapter does not recognize proceeds")

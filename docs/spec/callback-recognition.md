@@ -4,7 +4,7 @@ Settled in [issue #6](https://github.com/MaxAnderson95/macos-enterprise-sso-brid
 
 ## The rules
 
-A candidate Callback is a main-frame navigation whose target is HTTPS, carries no embedded credentials, and whose host is not the identity provider's.
+A candidate Callback is a main-frame navigation whose target is HTTPS or loopback HTTP, carries no embedded credentials, and whose host is not the identity provider's.
 
 It is a Callback when any of these holds:
 
@@ -22,7 +22,9 @@ The `SAMLResponse` query parameter stays. It is nearly as unlikely from Entra, b
 
 **Only urlencoded bodies are recognized.** Both bindings that matter, SAML 2.0 HTTP POST and OAuth `form_post`, submit ordinary HTML forms, which default to urlencoded. A multipart or JSON POST leaving the provider is not a Callback under anything Entra implements, so it is allowed to proceed and is never captured. This is a positive rule, not the spike's `multipart/` exclusion.
 
-**Non-HTTPS and credentialed targets are never Callbacks, and the Bridge lets those navigations proceed.** It captures Callbacks; it is not a security proxy for the provider's redirect chain, and cancelling mid-flow navigations would break legitimate flows without changing what is handed back. The host is logged at notice level.
+**Loopback HTTP is admitted.** Entra accepts an `http` `redirect_uri` only on `localhost` or `127.0.0.1`, and RFC 8252 section 8.3 allows it because the redirect never leaves the device. An Application running on the Mac itself, such as one in a local container at `http://localhost:8080/`, registers exactly that. Refusing its Callback would let the `WKWebView` load the Application, and the sign-in would finish in the Bridge's window instead of the original tab. `[::1]` is not admitted because Entra does not support it.
+
+**Other non-HTTPS and credentialed targets are never Callbacks, and the Bridge lets those navigations proceed.** It captures Callbacks; it is not a security proxy for the provider's redirect chain, and cancelling mid-flow navigations would break legitimate flows without changing what is handed back. The host is logged at notice level.
 
 **Nothing replayable is the Bridge's call.** A Sign-in request with neither a `redirect_uri` nor a `SAMLRequest` gets `{"result": "error", "code": "unsupported_request"}`. Recognition knowledge stays in the adapter rather than being half-duplicated as a path heuristic in the Extension, which is the untrusted process. The cost is one process spawn to learn the answer; no Approval prompt appears, because the plan fails before the window is shown.
 

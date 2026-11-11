@@ -25,7 +25,7 @@ The Bridge is a native macOS application that can reach that path. It performs t
 7. On approval the window grows to hold a `WKWebView`, which replays the Sign-in request verbatim. The platform SSO extension satisfies the authentication without a password prompt in the common case.
 8. The Bridge's navigation delegate inspects each main-frame navigation. The first one the adapter recognizes as a Callback is captured, including its POST body, and the navigation is not allowed to complete. See [callback-recognition.md](callback-recognition.md).
 9. The Bridge checks the encoded response against the 1 MiB native-messaging cap, sends it, and exits.
-10. The Extension re-validates the returned URL (HTTPS, no embedded credentials), then either navigates the original tab (GET) or loads the Relay page in it to submit the form (POST). The Application receives the Callback in the tab where the user started.
+10. The Extension re-validates the returned URL (HTTPS or loopback HTTP, no embedded credentials), then either navigates the original tab (GET) or loads the Relay page in it to submit the form (POST). The Application receives the Callback in the tab where the user started.
 
 ## Trust model
 

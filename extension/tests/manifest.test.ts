@@ -25,7 +25,9 @@ describe.each(["chromium", "gecko"])("the %s manifest", (engine) => {
   });
 
   it("keeps form-action in the extension-pages CSP for the Relay page", () => {
-    expect(manifest.content_security_policy.extension_pages).toContain("form-action https:");
+    expect(manifest.content_security_policy.extension_pages).toContain(
+      "form-action https: http://localhost:* http://127.0.0.1:*",
+    );
   });
 
   it("gives the action an icon and no popup, so onClicked fires", () => {

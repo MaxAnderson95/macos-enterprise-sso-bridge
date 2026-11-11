@@ -25,10 +25,10 @@ public struct CandidateNavigation: Equatable, Sendable {
 
 /// The checks the Bridge core makes before it asks an adapter anything.
 ///
-/// A candidate Callback targets HTTPS, carries no embedded credentials, is not still at
-/// the identity provider, and, when it is a POST, arrived with a urlencoded body the
-/// core could read. These are provider-independent, so they stay here rather than being
-/// restated inside every adapter's `recognizes`. The one check that needs WebKit,
+/// A candidate Callback targets HTTPS or loopback HTTP, carries no embedded credentials,
+/// is not still at the identity provider, and, when it is a POST, arrived with a
+/// urlencoded body the core could read. These are provider-independent, so they stay
+/// here rather than being restated inside every adapter's `recognizes`. The one check that needs WebKit,
 /// main-frame only, belongs to the navigation delegate; so does running the extraction
 /// whose result the POST rule below reads.
 ///
@@ -46,15 +46,24 @@ public enum CallbackEligibility {
     case noURLEncodedBody = "post body is not urlencoded"
   }
 
+  /// The hosts where a plain `http` Callback is admitted. A loopback redirect never
+  /// leaves the Mac (RFC 8252 section 8.3), and these are the two Entra accepts in an
+  /// `http` `redirect_uri`; it does not support `[::1]`. An Application running locally,
+  /// such as `http://localhost:8080/`, would otherwise finish its sign-in inside the
+  /// `WKWebView` instead of the original tab.
+  static let loopbackHosts: Set<String> = ["localhost", "127.0.0.1"]
+
   public static func refusal(
     _ candidate: CandidateNavigation,
     identityProviderHost: String
   ) -> Refusal? {
-    guard candidate.url.scheme?.lowercased() == "https" else { return .notEncrypted }
+    guard let scheme = candidate.url.scheme?.lowercased(),
+      let host = candidate.url.host()?.lowercased(),
+      scheme == "https" || (scheme == "http" && loopbackHosts.contains(host))
+    else { return .notEncrypted }
     guard candidate.url.user() == nil, candidate.url.password() == nil else {
       return .embeddedCredentials
     }
-    guard let host = candidate.url.host()?.lowercased() else { return .notEncrypted }
     guard host != identityProviderHost.lowercased() else { return .stillAtTheProvider }
     // The positive rule from docs/spec/callback-recognition.md, enforced where the
     // extraction's result is a value: a POST arrives with fields only when the core

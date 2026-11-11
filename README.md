@@ -259,7 +259,7 @@ GET replay loads the captured URL. POST replay loads a generated HTML document t
 
 ### Recognizing and returning the Callback
 
-The WebKit navigation delegate examines main-frame GET and POST navigations before they complete. A Callback candidate must use HTTPS, have no embedded URL credentials, and leave the hostname of the original identity-provider request. A POST must also have readable form fields. The Entra adapter then recognizes:
+The WebKit navigation delegate examines main-frame GET and POST navigations before they complete. A Callback candidate must use HTTPS (or plain HTTP to `localhost` or `127.0.0.1`), have no embedded URL credentials, and leave the hostname of the original identity-provider request. A POST must also have readable form fields. The Entra adapter then recognizes:
 
 - A destination matching the original `redirect_uri` by scheme, hostname, effective port, and path. Query and fragment can carry the authentication response and are not part of that destination comparison.
 - A `SAMLResponse` in the destination query, or a nonempty `SAMLResponse` in a POST body, even when the original request did not reveal the assertion-consumer URL.
@@ -267,7 +267,7 @@ The WebKit navigation delegate examines main-frame GET and POST navigations befo
 
 For POST, the Bridge first tries WebKit's request body as `application/x-www-form-urlencoded`. If WebKit has not retained the body, it inspects the submitting document for a matching form and extracts its fields. An explicitly different content type, such as multipart, cannot use that fallback. Navigations that do not qualify continue in WebKit; these checks identify Callbacks and do not filter every destination in the authentication chain.
 
-Once the Bridge recognizes a Callback, it cancels that WebKit navigation and sends the URL, method, and any form fields over native messaging. Cancellation is expected here and is not reported as a failed login. The Extension parses the response and independently checks that its destination is HTTPS without embedded credentials.
+Once the Bridge recognizes a Callback, it cancels that WebKit navigation and sends the URL, method, and any form fields over native messaging. Cancellation is expected here and is not reported as a failed login. The Extension parses the response and independently checks that its destination is HTTPS or loopback HTTP without embedded credentials.
 
 For GET, the Extension navigates the original tab directly to the Callback URL. For POST, it stores the fields against that tab and opens its own Relay page there. The Relay page reads and deletes the payload before building a hidden-input form and submitting it to the Application. Reloading the Relay page cannot resubmit the same stored assertion. This lets the Application receive the Callback in the browser that started the login, with that browser's existing transaction context and subject to its cookie policies. The Bridge does not redeem authorization codes or validate SAML assertions on the Application's behalf. The detailed rules are in [Callback recognition](docs/spec/callback-recognition.md).
 

@@ -17,4 +17,5 @@ export const identityProviderOrigins = [
  * Field names that mark a navigation to an entry origin as the Application's Sign-in
  * request, in the query or the form body. The adapter plans from the same names.
  */
-export const signInRequestMarkers = ["redirect_uri", "SAMLRequest"];
+export const signInRequestMarkers = ["redirect_uri"];
+export const caseInsensitiveSignInRequestMarkers = ["samlrequest"];

@@ -2,7 +2,11 @@
 // Bridge replays. Pure functions over values: the listener registration lives in
 // background.ts, so every normalization rule here is testable without a browser.
 
-import { identityProviderOrigins, signInRequestMarkers } from "./generated/entryOrigins";
+import {
+  caseInsensitiveSignInRequestMarkers,
+  identityProviderOrigins,
+  signInRequestMarkers,
+} from "./generated/entryOrigins";
 import type { FormField, SignInRequest } from "./protocol";
 
 /**
@@ -111,12 +115,16 @@ function carriesMarker(request: SignInRequest): boolean {
   } catch {
     return false;
   }
-  if (signInRequestMarkers.some((marker) => query.has(marker))) {
-    return true;
-  }
   return (
-    request.method === "POST" &&
-    request.fields.some(([name]) => signInRequestMarkers.includes(name))
+    [...query.keys()].some(isMarker) ||
+    (request.method === "POST" && request.fields.some(([name]) => isMarker(name)))
+  );
+}
+
+function isMarker(name: string): boolean {
+  return (
+    signInRequestMarkers.includes(name) ||
+    caseInsensitiveSignInRequestMarkers.includes(name.toLowerCase())
   );
 }
 

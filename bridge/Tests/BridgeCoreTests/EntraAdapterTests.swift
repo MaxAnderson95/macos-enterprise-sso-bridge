@@ -122,10 +122,21 @@ struct EntraPlanTests {
       boundDestination: nil
     ),
     PlanCase(
-      name: "A redirect_uri on a SAML request is shown but binds nothing",
+      name: "A redirect_uri on a mixed-case SAML POST is shown but binds nothing",
       request: post(
         "\(entra)/common/saml2?redirect_uri=https%3A%2F%2Flisted.example%2Fcallback",
-        [("SAMLRequest", SAMLFixtures.acsPostBinding)]
+        [("sAmLrEqUeSt", SAMLFixtures.acsPostBinding)]
+      ),
+      replayable: true,
+      destination: "https://listed.example/callback",
+      boundDestination: nil
+    ),
+    PlanCase(
+      name: "A redirect_uri on a lowercased SAML redirect is shown but binds nothing",
+      request: get(
+        "\(entra)/common/saml2?redirect_uri=https%3A%2F%2Flisted.example%2Fcallback&samlrequest="
+          + SAMLFixtures.acsRedirectBinding.addingPercentEncoding(
+            withAllowedCharacters: .alphanumerics)!
       ),
       replayable: true,
       destination: "https://listed.example/callback",

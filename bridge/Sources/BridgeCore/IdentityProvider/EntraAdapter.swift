@@ -11,9 +11,6 @@ public struct EntraAdapter: IdentityProviderAdapter {
   /// not here: it is recognized wherever it appears.
   private static let oidcResponseFields = ["code", "id_token", "error"]
 
-  // Claude's Entra redirect uses the second spelling. Match both without changing the replay.
-  private static let samlRequestNames: Set<String> = ["SAMLRequest", "SamlRequest"]
-
   public init() {}
 
   public func plan(_ request: SignInRequest) -> HandoffPlan? {
@@ -84,11 +81,16 @@ public struct EntraAdapter: IdentityProviderAdapter {
 
   /// Check both carriers so a POST with a SAML value in each cannot bind a destination.
   private static func samlRequests(in request: SignInRequest, query: [URLQueryItem]) -> [String] {
-    let queryValues = query.filter { samlRequestNames.contains($0.name) }.compactMap(\.value)
+    let queryValues = query.filter { isSAMLRequest($0.name) }.map { $0.value ?? "" }
     if case .post(_, let fields) = request {
-      return queryValues + fields.filter { samlRequestNames.contains($0.name) }.map(\.value)
+      return queryValues + fields.filter { isSAMLRequest($0.name) }.map(\.value)
     }
     return queryValues
+  }
+
+  /// Entra matches this name without regard to case, including when it checks for duplicates.
+  private static func isSAMLRequest(_ name: String) -> Bool {
+    name.lowercased() == "samlrequest"
   }
 
   private static func queryItems(of url: URL) -> [URLQueryItem] {

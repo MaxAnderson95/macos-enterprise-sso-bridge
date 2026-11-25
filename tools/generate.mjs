@@ -59,17 +59,22 @@ export const identityProviderOrigins = [
  * The same names the provider's adapter builds its plan from, so a request without
  * any of them is one the Bridge would answer `unsupported_request` anyway.
  */
-export const signInRequestMarkers = (() => {
-  const markers = data.signInRequestMarkers;
+function readMarkers(key) {
+  const markers = data[key];
   if (
     !Array.isArray(markers) ||
     markers.length === 0 ||
     markers.some((marker) => typeof marker !== "string" || marker === "")
   ) {
-    throw new Error(`${dataFile}: signInRequestMarkers must be a non-empty array of names`);
+    throw new Error(`${dataFile}: ${key} must be a non-empty array of names`);
   }
   return markers;
-})();
+}
+
+const signInRequestMarkers = readMarkers("signInRequestMarkers");
+const caseInsensitiveSignInRequestMarkers = readMarkers("caseInsensitiveSignInRequestMarkers").map(
+  (marker) => marker.toLowerCase(),
+);
 
 // swift-format's TrailingComma rule wants the last element to carry a comma only in a
 // literal it considers multiline, which a one-origin literal is not.
@@ -129,6 +134,7 @@ function typeScriptSource() {
     " * request, in the query or the form body. The adapter plans from the same names.",
     " */",
     tsArray("signInRequestMarkers", signInRequestMarkers),
+    tsArray("caseInsensitiveSignInRequestMarkers", caseInsensitiveSignInRequestMarkers),
     "",
   ].join("\n");
 }

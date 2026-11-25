@@ -92,6 +92,29 @@ struct EntraPlanTests {
       boundDestination: "https://app.example.com/sso/acs"
     ),
     PlanCase(
+      name: "SAML HTTP-Redirect binding using Claude's SamlRequest spelling",
+      request: get(
+        "\(entra)/common/saml2?SamlRequest="
+          + SAMLFixtures.acsRedirectBinding.addingPercentEncoding(
+            withAllowedCharacters: .alphanumerics)!
+          + "&RelayState=%2F"
+      ),
+      replayable: true,
+      destination: "https://app.example.com/sso/acs",
+      boundDestination: "https://app.example.com/sso/acs"
+    ),
+    PlanCase(
+      name: "SAML requests with both spellings do not select a destination",
+      request: post(
+        "\(entra)/common/saml2?SamlRequest="
+          + SAMLFixtures.issuerOnly.addingPercentEncoding(withAllowedCharacters: .alphanumerics)!,
+        [("SAMLRequest", SAMLFixtures.acsPostBinding)]
+      ),
+      replayable: true,
+      destination: nil,
+      boundDestination: nil
+    ),
+    PlanCase(
       name: "SAML with no ACS URL falls back to the issuer",
       request: post("\(entra)/common/saml2", [("SAMLRequest", SAMLFixtures.issuerOnly)]),
       replayable: true,

@@ -2,9 +2,8 @@ import Foundation
 
 /// Entra: the only identity provider v1 implements.
 ///
-/// It knows three things nobody else in the Bridge does: that `redirect_uri` and
-/// `SAMLRequest` are what make a Sign-in request replayable, where each of them says
-/// the response will land, and the field names a Callback carries.
+/// It knows what makes a Sign-in request replayable, where it says the response will
+/// land, and the field names a Callback carries.
 public struct EntraAdapter: IdentityProviderAdapter {
   public static let entryOrigins = EntryOrigins.entra
 
@@ -12,21 +11,26 @@ public struct EntraAdapter: IdentityProviderAdapter {
   /// not here: it is recognized wherever it appears.
   private static let oidcResponseFields = ["code", "id_token", "error"]
 
+  // Claude's Entra redirect uses the second spelling. Match both without changing the replay.
+  private static let samlRequestNames: Set<String> = ["SAMLRequest", "SamlRequest"]
+
   public init() {}
 
   public func plan(_ request: SignInRequest) -> HandoffPlan? {
     let query = Self.queryItems(of: request.url)
     let rawRedirectURI = query.first { $0.name == "redirect_uri" }?.value
-    let samlRequest = Self.samlRequest(in: request, query: query)
+    let samlRequests = Self.samlRequests(in: request, query: query)
 
     // The judgment this adapter owns: neither of these means there is nothing to
     // replay, whatever else the request carries.
-    guard rawRedirectURI != nil || samlRequest != nil else { return nil }
+    guard rawRedirectURI != nil || !samlRequests.isEmpty else { return nil }
 
     // A `redirect_uri` that will not parse still makes the request replayable; it just
     // leaves the Approval with nothing truthful to show.
     let redirectURI = rawRedirectURI.flatMap(Self.webURL)
-    let saml = samlRequest.flatMap(SAMLAuthnRequest.destinations)
+    // With competing SAML values, the Bridge cannot predict which one Entra will read.
+    let saml =
+      samlRequests.count == 1 ? SAMLAuthnRequest.destinations(fromEncoded: samlRequests[0]) : nil
     let destination = redirectURI ?? saml?.assertionConsumerService ?? saml?.issuer
 
     // Entra validates a `redirect_uri` against the client's registration and posts a
@@ -34,9 +38,9 @@ public struct EntraAdapter: IdentityProviderAdapter {
     // the sole protocol in play. A `redirect_uri` on a SAML request is not what Entra
     // answers, and an issuer is not an endpoint at all.
     let boundDestination: URL? =
-      switch (rawRedirectURI, samlRequest) {
-      case (.some, nil): redirectURI
-      case (nil, .some): saml?.assertionConsumerService
+      switch (rawRedirectURI, samlRequests.count) {
+      case (.some, 0): redirectURI
+      case (nil, 1): saml?.assertionConsumerService
       default: nil
       }
 
@@ -78,15 +82,13 @@ public struct EntraAdapter: IdentityProviderAdapter {
       && normalizedPath(of: candidate) == normalizedPath(of: redirectURI)
   }
 
-  /// A POST carries `SAMLRequest` as a form field; the HTTP-Redirect binding puts it in
-  /// the query.
-  private static func samlRequest(in request: SignInRequest, query: [URLQueryItem]) -> String? {
-    if case .post(_, let fields) = request,
-      let field = fields.first(where: { $0.name == "SAMLRequest" })
-    {
-      return field.value
+  /// Check both carriers so a POST with a SAML value in each cannot bind a destination.
+  private static func samlRequests(in request: SignInRequest, query: [URLQueryItem]) -> [String] {
+    let queryValues = query.filter { samlRequestNames.contains($0.name) }.compactMap(\.value)
+    if case .post(_, let fields) = request {
+      return queryValues + fields.filter { samlRequestNames.contains($0.name) }.map(\.value)
     }
-    return query.first { $0.name == "SAMLRequest" }?.value
+    return queryValues
   }
 
   private static func queryItems(of url: URL) -> [URLQueryItem] {

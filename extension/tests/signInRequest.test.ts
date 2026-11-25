@@ -117,10 +117,13 @@ describe("signInRequestFrom", () => {
 
   // The HTTP-Redirect SAML binding puts the request in the query, and the marker check
   // has to find it there for a GET as well as in a POST's fields.
-  it("keeps a GET carrying SAMLRequest in its query", () => {
-    const url = `${samlUrl}?SAMLRequest=fZJNb9sw&RelayState=%2F`;
-    expect(signInRequestFrom({ url, method: "GET" })).toEqual({ url, method: "GET" });
-  });
+  it.each(["SAMLRequest", "SamlRequest"])(
+    "keeps a GET carrying %s in its query unchanged",
+    (key) => {
+      const url = `${samlUrl}?${key}=abc%2Bxyz%3D&RelayState=%2F`;
+      expect(signInRequestFrom({ url, method: "GET" })).toEqual({ url, method: "GET" });
+    },
+  );
 
   it("ignores a method that is not a sign-in navigation", () => {
     expect(signInRequestFrom(details({ method: "HEAD" }))).toBeNull();

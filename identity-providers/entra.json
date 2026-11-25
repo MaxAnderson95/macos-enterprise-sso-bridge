@@ -2,5 +2,5 @@
   "name": "Microsoft Entra",
   "entryOrigins": ["https://login.microsoftonline.com"],
   "interiorOrigins": ["https://login.microsoft.com"],
-  "signInRequestMarkers": ["redirect_uri", "SAMLRequest"]
+  "signInRequestMarkers": ["redirect_uri", "SAMLRequest", "SamlRequest"]
 }
